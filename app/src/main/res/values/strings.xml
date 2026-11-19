@@ -1,0 +1,188 @@
+<resources>
+    <string name="app_name">AI Chat</string>
+
+    <!-- Navigation -->
+    <string name="nav_chats">Chats</string>
+    <string name="nav_providers">Providers</string>
+    <string name="nav_settings">Settings</string>
+    <string name="cd_back">Back</string>
+    <string name="cd_close">Close</string>
+
+    <!-- Onboarding / Providers -->
+    <string name="providers_onboarding_title">Add Providers</string>
+    <string name="providers_onboarding_subtitle">Connect one or more AI providers with your own API keys. Keys stay encrypted on your device.</string>
+    <string name="providers_configured_section">Configured Providers</string>
+    <string name="providers_catalog_section">Supported Providers</string>
+    <string name="providers_add_account">Add Account</string>
+    <string name="providers_configure">Configure</string>
+    <string name="providers_skip_to_chats">Continue to Chats</string>
+    <string name="providers_status_not_configured">Not configured</string>
+    <string name="providers_status_connected">Connected</string>
+    <string name="providers_status_error">Error</string>
+    <string name="providers_disabled_badge">Disabled</string>
+    <string name="providers_delete_title">Delete Provider?</string>
+    <string name="providers_delete_message">This removes \"%1$s\" and its encrypted API key from this device. Existing chat history will remain.</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_share">Share</string>
+    <string name="action_open">Open</string>
+    <string name="action_confirm">Confirm</string>
+
+    <!-- Provider Descriptions -->
+    <string name="provider_desc_coarena">Fast unified inference gateway with OpenAI-compatible chat and models API.</string>
+    <string name="provider_desc_openai">GPT, reasoning, vision, and image generation models via OpenAI API.</string>
+    <string name="provider_desc_perplexity">Search-augmented Sonar models with real-time web grounding.</string>
+    <string name="provider_desc_anthropic">Claude models powered by the native Anthropic Messages API.</string>
+    <string name="provider_desc_claude_code">Claude coding-optimized profile for code analysis and generation.</string>
+    <string name="provider_desc_gemini">Google Gemini models via OpenAI-compatible endpoint.</string>
+    <string name="provider_desc_deepseek">DeepSeek Chat and R1 reasoning models with OpenAI compatibility.</string>
+    <string name="provider_desc_groq">Ultra-low-latency LPU inference for Llama, Mixtral, and Gemma.</string>
+    <string name="provider_desc_openrouter">Single key access to hundreds of models across top providers.</string>
+    <string name="provider_desc_grok">Grok conversational and multimodal models via xAI API.</string>
+    <string name="provider_desc_mistral">Mistral, Codestral, and Pixtral models with European hosting.</string>
+    <string name="provider_desc_together">Open-weights LLMs and image models via Together inference.</string>
+    <string name="provider_desc_cloudflare">Cloudflare Workers AI OpenAI-compatible gateway (requires Account ID).</string>
+    <string name="provider_desc_huggingface">Hugging Face Inference Providers router for open models.</string>
+    <string name="provider_desc_xai">Direct xAI endpoint for Grok models and vision capabilities.</string>
+    <string name="provider_desc_custom">Connect Ollama, LM Studio, vLLM, LiteLLM, or any OpenAI-compatible server.</string>
+
+    <!-- Provider Configuration -->
+    <string name="provider_config_title">Provider Settings</string>
+    <string name="provider_field_name">Display Name</string>
+    <string name="provider_field_protocol">API Mode</string>
+    <string name="protocol_openai">OpenAI-compatible</string>
+    <string name="protocol_anthropic">Anthropic-compatible</string>
+    <string name="protocol_auto">Auto-detect</string>
+    <string name="protocol_hint_openai">OpenAI-compatible — choose for OpenAI, OpenRouter, Groq, Together AI, Mistral, DeepSeek, xAI, Coarena, and most custom servers.</string>
+    <string name="protocol_hint_anthropic">Anthropic-compatible — choose for Anthropic/Claude when the endpoint expects Anthropic Messages API.</string>
+    <string name="protocol_hint_tip">If unsure, start with OpenAI-compatible: it is usually simpler for mobile chat apps.</string>
+    <string name="provider_field_base_url">Base URL</string>
+    <string name="provider_field_api_key">API Key</string>
+    <string name="provider_api_key_hint">Stored encrypted via Android Keystore</string>
+    <string name="provider_show_key">Show API key</string>
+    <string name="provider_hide_key">Hide API key</string>
+    <string name="provider_field_org_id">Organization ID (optional)</string>
+    <string name="provider_field_project_id">Project ID (optional)</string>
+    <string name="provider_headers_title">Optional Headers</string>
+    <string name="provider_headers_add">Add Header</string>
+    <string name="provider_header_name">Header Name</string>
+    <string name="provider_header_value">Header Value</string>
+    <string name="provider_test_connection">Test Connection</string>
+    <string name="provider_fetch_models">Fetch Models</string>
+    <string name="provider_last_check">Last check: %1$s</string>
+    <string name="provider_never_checked">Not checked yet</string>
+    <string name="provider_models_loaded_count">%1$d models loaded</string>
+    <string name="provider_manual_model_title">Add Model ID Manually</string>
+    <string name="provider_manual_model_hint">e.g. gpt-4o, claude-sonnet-4-5, llama3.3</string>
+    <string name="provider_manual_model_note">Automatic model listing is unavailable for this endpoint. Enter a model ID manually.</string>
+    <string name="provider_add_manual_model">Add Model ID</string>
+
+    <!-- Models -->
+    <string name="models_picker_title">Select Model</string>
+    <string name="models_search_hint">Search models by name or ID…</string>
+    <string name="models_empty">No models available. Connect a provider or add a manual model ID.</string>
+    <string name="badge_chat">Chat</string>
+    <string name="badge_vision">Vision</string>
+    <string name="badge_image">Image</string>
+    <string name="badge_video">Video</string>
+    <string name="badge_tools">Tools</string>
+    <string name="badge_reasoning">Reasoning</string>
+
+    <!-- Chats -->
+    <string name="chats_title">AI Chat</string>
+    <string name="chats_new">New Chat</string>
+    <string name="chats_search_hint">Search chats…</string>
+    <string name="chats_tab_active">Active</string>
+    <string name="chats_tab_archived">Archived</string>
+    <string name="chats_pinned">Pinned</string>
+    <string name="chats_recent">Recent</string>
+    <string name="chats_empty_title">Start a Conversation</string>
+    <string name="chats_empty_subtitle">Choose any connected AI model, attach images or documents, and chat with real-time streaming.</string>
+    <string name="chats_no_provider_title">No Provider Connected</string>
+    <string name="chats_no_provider_subtitle">Configure at least one provider to start chatting with AI models.</string>
+    <string name="chats_rename">Rename</string>
+    <string name="chats_pin">Pin</string>
+    <string name="chats_unpin">Unpin</string>
+    <string name="chats_archive">Archive</string>
+    <string name="chats_unarchive">Unarchive</string>
+    <string name="chats_delete">Delete Chat</string>
+    <string name="chats_rename_title">Rename Chat</string>
+    <string name="chats_delete_confirm">Delete \"%1$s\" and all its messages?</string>
+    <string name="chats_untitled">New Chat</string>
+
+    <!-- Chat Conversation -->
+    <string name="chat_select_model">Select Model</string>
+    <string name="chat_input_hint">Message AI…</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_stop">Stop</string>
+    <string name="chat_attach">Attach</string>
+    <string name="chat_attach_gallery">Photo from Gallery</string>
+    <string name="chat_attach_camera">Take Photo</string>
+    <string name="chat_attach_document">Document (PDF, TXT, MD)</string>
+    <string name="chat_detected_url_prompt">Link detected: %1$s</string>
+    <string name="chat_add_as_attachment">Add as attachment</string>
+    <string name="chat_status_sending">Sending…</string>
+    <string name="chat_status_generating">Generating…</string>
+    <string name="chat_status_completed">Completed</string>
+    <string name="chat_status_error">Error</string>
+    <string name="chat_status_cancelled">Cancelled</string>
+    <string name="chat_edit_message">Edit &amp; Resend</string>
+    <string name="chat_copy_message">Copy Message</string>
+    <string name="chat_copy_code">Copy Code</string>
+    <string name="chat_copied">Copied to clipboard</string>
+    <string name="chat_attachment_unsupported_warning">The selected model (%1$s) may not support %2$s attachments. Choose a compatible model or remove the attachment.</string>
+    <string name="chat_choose_compatible_model">Choose Model</string>
+    <string name="chat_camera_permission_rationale">Camera permission is needed to take a photo and attach it to your message.</string>
+    <string name="chat_storage_permission_rationale">Storage permission is needed on Android 8–9 to save media to your gallery.</string>
+
+    <!-- Media Generation & Viewer -->
+    <string name="media_save">Save</string>
+    <string name="media_saved_success">Saved to Gallery</string>
+    <string name="media_saved_error">Could not save media: %1$s</string>
+    <string name="media_copy_link">Copy Link</string>
+    <string name="media_generating_image">Generating image…</string>
+    <string name="media_generating_video">Generating video…</string>
+    <string name="media_viewer_title">Media Viewer</string>
+
+    <!-- Errors -->
+    <string name="error_copy">Copy Error</string>
+    <string name="error_copied">Diagnostic report copied</string>
+    <string name="error_http_status">HTTP %1$d</string>
+    <string name="error_no_internet">No internet connection. Check Wi-Fi or mobile data.</string>
+    <string name="error_invalid_api_key">Invalid API key. Verify the key in Provider Settings.</string>
+    <string name="error_expired_key">API key appears expired or revoked.</string>
+    <string name="error_rate_limit">Rate limit exceeded. Wait a moment and retry.</string>
+    <string name="error_insufficient_credits">Insufficient account credits or quota exhausted.</string>
+    <string name="error_unsupported_model">This model is unsupported or unavailable for your key.</string>
+    <string name="error_payload_too_large">Request or attachment is too large for this endpoint.</string>
+    <string name="error_unsupported_attachment">Attachment format is not supported by the selected provider/model.</string>
+    <string name="error_timeout">Request timed out. The server took too long to respond.</string>
+    <string name="error_server">Provider server error. Please try again later.</string>
+    <string name="error_invalid_base_url">Invalid Base URL. Use a valid http:// or https:// URL.</string>
+    <string name="error_unknown">Unexpected request error.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme_label">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_dynamic_color">Dynamic Color (Android 12+)</string>
+    <string name="settings_language_label">Language</string>
+    <string name="settings_language_system">System Default</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_ru">Русский</string>
+    <string name="settings_chat_behavior">Chat &amp; Generation</string>
+    <string name="settings_streaming">Stream Responses (SSE)</string>
+    <string name="settings_fetch_links">Fetch Web Page Text Locally</string>
+    <string name="settings_fetch_links_desc">When adding a URL attachment, download page title &amp; text locally before sending.</string>
+    <string name="settings_temperature">Temperature: %1$.2f</string>
+    <string name="settings_max_tokens">Max Tokens: %1$d</string>
+    <string name="settings_security_title">Privacy &amp; Security</string>
+    <string name="settings_security_desc">No ads, no analytics, no third-party telemetry. API keys are encrypted locally using Android Keystore.</string>
+</resources>

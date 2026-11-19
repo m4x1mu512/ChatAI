@@ -1,0 +1,6 @@
+{
+  "name": "AI Chat",
+  "description": "Multi-provider AI Chat Android client supporting OpenAI-compatible and Anthropic-compatible APIs, streaming, multimodal attachments, and secure local storage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

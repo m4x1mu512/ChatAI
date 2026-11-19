@@ -1,0 +1,188 @@
+<resources>
+    <string name="app_name">AI Chat</string>
+
+    <!-- Navigation -->
+    <string name="nav_chats">Чаты</string>
+    <string name="nav_providers">Провайдеры</string>
+    <string name="nav_settings">Настройки</string>
+    <string name="cd_back">Назад</string>
+    <string name="cd_close">Закрыть</string>
+
+    <!-- Onboarding / Providers -->
+    <string name="providers_onboarding_title">Добавьте провайдеров</string>
+    <string name="providers_onboarding_subtitle">Подключите одного или нескольких AI-провайдеров со своими API-ключами. Ключи надёжно шифруются на устройстве.</string>
+    <string name="providers_configured_section">Настроенные провайдеры</string>
+    <string name="providers_catalog_section">Поддерживаемые провайдеры</string>
+    <string name="providers_add_account">Добавить аккаунт</string>
+    <string name="providers_configure">Настроить</string>
+    <string name="providers_skip_to_chats">Перейти к чатам</string>
+    <string name="providers_status_not_configured">Не настроен</string>
+    <string name="providers_status_connected">Подключён</string>
+    <string name="providers_status_error">Ошибка</string>
+    <string name="providers_disabled_badge">Отключён</string>
+    <string name="providers_delete_title">Удалить провайдера?</string>
+    <string name="providers_delete_message">Провайдер «%1$s» и его зашифрованный API-ключ будут удалены с устройства. История чатов сохранится.</string>
+    <string name="action_delete">Удалить</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_save">Сохранить</string>
+    <string name="action_edit">Изменить</string>
+    <string name="action_retry">Повторить</string>
+    <string name="action_copy">Копировать</string>
+    <string name="action_share">Поделиться</string>
+    <string name="action_open">Открыть</string>
+    <string name="action_confirm">Подтвердить</string>
+
+    <!-- Provider Descriptions -->
+    <string name="provider_desc_coarena">Быстрый единый шлюз с OpenAI-совместимым чатом и списком моделей.</string>
+    <string name="provider_desc_openai">Модели GPT, reasoning, vision и генерация изображений через OpenAI API.</string>
+    <string name="provider_desc_perplexity">Модели Sonar с поиском и опорой на актуальные веб-источники.</string>
+    <string name="provider_desc_anthropic">Модели Claude через нативный Anthropic Messages API.</string>
+    <string name="provider_desc_claude_code">Профиль Claude, оптимизированный для анализа и генерации кода.</string>
+    <string name="provider_desc_gemini">Модели Google Gemini через OpenAI-совместимый endpoint.</string>
+    <string name="provider_desc_deepseek">Модели DeepSeek Chat и R1 reasoning с поддержкой OpenAI API.</string>
+    <string name="provider_desc_groq">Сверхбыстрый LPU-инференс для Llama, Mixtral и Gemma.</string>
+    <string name="provider_desc_openrouter">Единый ключ для доступа к сотням моделей разных провайдеров.</string>
+    <string name="provider_desc_grok">Диалоговые и мультимодальные модели Grok от xAI.</string>
+    <string name="provider_desc_mistral">Модели Mistral, Codestral и Pixtral.</string>
+    <string name="provider_desc_together">Открытые LLM и модели генерации изображений через Together AI.</string>
+    <string name="provider_desc_cloudflare">OpenAI-совместимый шлюз Cloudflare Workers AI (требуется Account ID).</string>
+    <string name="provider_desc_huggingface">Маршрутизатор Hugging Face Inference Providers для открытых моделей.</string>
+    <string name="provider_desc_xai">Прямой endpoint xAI для моделей Grok с поддержкой vision.</string>
+    <string name="provider_desc_custom">Подключите Ollama, LM Studio, vLLM, LiteLLM или свой OpenAI-совместимый сервер.</string>
+
+    <!-- Provider Configuration -->
+    <string name="provider_config_title">Настройки провайдера</string>
+    <string name="provider_field_name">Название</string>
+    <string name="provider_field_protocol">Режим API</string>
+    <string name="protocol_openai">OpenAI-compatible</string>
+    <string name="protocol_anthropic">Anthropic-compatible</string>
+    <string name="protocol_auto">Автоопределение</string>
+    <string name="protocol_hint_openai">OpenAI-compatible — выбирайте для OpenAI, OpenRouter, Groq, Together AI, Mistral, DeepSeek, xAI, Coarena и большинства кастомных серверов.</string>
+    <string name="protocol_hint_anthropic">Anthropic-compatible — выбирайте для Anthropic/Claude, если приложение или SDK ожидает Anthropic Messages API.</string>
+    <string name="protocol_hint_tip">Если не уверены, начните с OpenAI-compatible: он обычно проще для мобильных чат-приложений.</string>
+    <string name="provider_field_base_url">Base URL</string>
+    <string name="provider_field_api_key">API key</string>
+    <string name="provider_api_key_hint">Шифруется через Android Keystore</string>
+    <string name="provider_show_key">Показать API-ключ</string>
+    <string name="provider_hide_key">Скрыть API-ключ</string>
+    <string name="provider_field_org_id">Organization ID (опционально)</string>
+    <string name="provider_field_project_id">Project ID (опционально)</string>
+    <string name="provider_headers_title">Опциональные заголовки</string>
+    <string name="provider_headers_add">Добавить заголовок</string>
+    <string name="provider_header_name">Имя заголовка</string>
+    <string name="provider_header_value">Значение заголовка</string>
+    <string name="provider_test_connection">Проверить подключение</string>
+    <string name="provider_fetch_models">Загрузить модели</string>
+    <string name="provider_last_check">Последняя проверка: %1$s</string>
+    <string name="provider_never_checked">Ещё не проверялось</string>
+    <string name="provider_models_loaded_count">Загружено моделей: %1$d</string>
+    <string name="provider_manual_model_title">Ввести ID модели вручную</string>
+    <string name="provider_manual_model_hint">напр. gpt-4o, claude-sonnet-4-5, llama3.3</string>
+    <string name="provider_manual_model_note">Автоматическая загрузка списка моделей недоступна. Введите ID модели вручную.</string>
+    <string name="provider_add_manual_model">Добавить модель</string>
+
+    <!-- Models -->
+    <string name="models_picker_title">Выбор модели</string>
+    <string name="models_search_hint">Поиск модели по названию или ID…</string>
+    <string name="models_empty">Нет доступных моделей. Подключите провайдера или добавьте модель вручную.</string>
+    <string name="badge_chat">Chat</string>
+    <string name="badge_vision">Vision</string>
+    <string name="badge_image">Image</string>
+    <string name="badge_video">Video</string>
+    <string name="badge_tools">Tools</string>
+    <string name="badge_reasoning">Reasoning</string>
+
+    <!-- Chats -->
+    <string name="chats_title">AI Chat</string>
+    <string name="chats_new">Новый чат</string>
+    <string name="chats_search_hint">Поиск чатов…</string>
+    <string name="chats_tab_active">Активные</string>
+    <string name="chats_tab_archived">Архив</string>
+    <string name="chats_pinned">Закреплённые</string>
+    <string name="chats_recent">Недавние</string>
+    <string name="chats_empty_title">Начните диалог</string>
+    <string name="chats_empty_subtitle">Выберите модель любого подключённого провайдера, прикрепляйте изображения или документы и общайтесь в потоковом режиме.</string>
+    <string name="chats_no_provider_title">Нет подключённых провайдеров</string>
+    <string name="chats_no_provider_subtitle">Настройте хотя бы одного провайдера, чтобы начать общение с AI-моделями.</string>
+    <string name="chats_rename">Переименовать</string>
+    <string name="chats_pin">Закрепить</string>
+    <string name="chats_unpin">Открепить</string>
+    <string name="chats_archive">Архивировать</string>
+    <string name="chats_unarchive">Разархивировать</string>
+    <string name="chats_delete">Удалить чат</string>
+    <string name="chats_rename_title">Переименовать чат</string>
+    <string name="chats_delete_confirm">Удалить чат «%1$s» и все сообщения?</string>
+    <string name="chats_untitled">Новый чат</string>
+
+    <!-- Chat Conversation -->
+    <string name="chat_select_model">Выбрать модель</string>
+    <string name="chat_input_hint">Сообщение AI…</string>
+    <string name="chat_send">Отправить</string>
+    <string name="chat_stop">Остановить</string>
+    <string name="chat_attach">Прикрепить</string>
+    <string name="chat_attach_gallery">Изображение из галереи</string>
+    <string name="chat_attach_camera">Сделать фото</string>
+    <string name="chat_attach_document">Документ (PDF, TXT, MD)</string>
+    <string name="chat_detected_url_prompt">Найдена ссылка: %1$s</string>
+    <string name="chat_add_as_attachment">Добавить как вложение</string>
+    <string name="chat_status_sending">Отправляется…</string>
+    <string name="chat_status_generating">Генерируется…</string>
+    <string name="chat_status_completed">Завершено</string>
+    <string name="chat_status_error">Ошибка</string>
+    <string name="chat_status_cancelled">Отменено</string>
+    <string name="chat_edit_message">Редактировать и отправить</string>
+    <string name="chat_copy_message">Копировать</string>
+    <string name="chat_copy_code">Копировать код</string>
+    <string name="chat_copied">Скопировано в буфер</string>
+    <string name="chat_attachment_unsupported_warning">Выбранная модель (%1$s) может не поддерживать вложения типа «%2$s». Выберите совместимую модель или удалите вложение.</string>
+    <string name="chat_choose_compatible_model">Выбрать модель</string>
+    <string name="chat_camera_permission_rationale">Разрешение камеры нужно для съёмки фото и прикрепления к сообщению.</string>
+    <string name="chat_storage_permission_rationale">На Android 8–9 разрешение на запись нужно для сохранения медиа в галерею.</string>
+
+    <!-- Media Generation & Viewer -->
+    <string name="media_save">Сохранить</string>
+    <string name="media_saved_success">Сохранено в галерею</string>
+    <string name="media_saved_error">Не удалось сохранить: %1$s</string>
+    <string name="media_copy_link">Копировать ссылку</string>
+    <string name="media_generating_image">Генерация изображения…</string>
+    <string name="media_generating_video">Генерация видео…</string>
+    <string name="media_viewer_title">Просмотр медиа</string>
+
+    <!-- Errors -->
+    <string name="error_copy">Скопировать ошибку</string>
+    <string name="error_copied">Диагностика скопирована</string>
+    <string name="error_http_status">HTTP %1$d</string>
+    <string name="error_no_internet">Нет подключения к интернету. Проверьте Wi-Fi или мобильную сеть.</string>
+    <string name="error_invalid_api_key">Неверный API key. Проверьте ключ в настройках провайдера.</string>
+    <string name="error_expired_key">API key истёк или был отозван.</string>
+    <string name="error_rate_limit">Превышен rate limit. Подождите немного и повторите запрос.</string>
+    <string name="error_insufficient_credits">Недостаточно кредитов или исчерпана квота аккаунта.</string>
+    <string name="error_unsupported_model">Модель не поддерживается или недоступна для вашего ключа.</string>
+    <string name="error_payload_too_large">Запрос или вложение слишком велико для этого endpoint.</string>
+    <string name="error_unsupported_attachment">Формат вложения не поддерживается выбранным провайдером или моделью.</string>
+    <string name="error_timeout">Таймаут запроса. Сервер не ответил вовремя.</string>
+    <string name="error_server">Ошибка сервера провайдера. Повторите попытку позже.</string>
+    <string name="error_invalid_base_url">Некорректный Base URL. Укажите корректный URL с http:// или https://.</string>
+    <string name="error_unknown">Непредвиденная ошибка запроса.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_appearance">Оформление</string>
+    <string name="settings_theme_label">Тема</string>
+    <string name="settings_theme_system">Системная</string>
+    <string name="settings_theme_light">Светлая</string>
+    <string name="settings_theme_dark">Тёмная</string>
+    <string name="settings_dynamic_color">Dynamic Color (Android 12+)</string>
+    <string name="settings_language_label">Язык</string>
+    <string name="settings_language_system">Как в системе</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_ru">Русский</string>
+    <string name="settings_chat_behavior">Чат и генерация</string>
+    <string name="settings_streaming">Потоковые ответы (SSE)</string>
+    <string name="settings_fetch_links">Загружать текст веб-страниц локально</string>
+    <string name="settings_fetch_links_desc">При добавлении ссылки загружать заголовок и текст страницы на устройстве.</string>
+    <string name="settings_temperature">Температура: %1$.2f</string>
+    <string name="settings_max_tokens">Макс. токенов: %1$d</string>
+    <string name="settings_security_title">Приватность и безопасность</string>
+    <string name="settings_security_desc">Без рекламы, трекеров и сторонней аналитики. API-ключи шифруются локально через Android Keystore.</string>
+</resources>
