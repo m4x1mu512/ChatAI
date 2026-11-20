@@ -39,8 +39,14 @@ interface ModelDao {
     @Query("SELECT * FROM ai_models ORDER BY displayName ASC")
     fun observeAllModels(): Flow<List<AiModelEntity>>
 
+    @Query("SELECT * FROM ai_models WHERE isEnabled = 1 ORDER BY displayName ASC")
+    fun observeEnabledModels(): Flow<List<AiModelEntity>>
+
     @Query("SELECT * FROM ai_models WHERE providerId = :providerId ORDER BY displayName ASC")
     fun observeModelsForProvider(providerId: String): Flow<List<AiModelEntity>>
+
+    @Query("SELECT * FROM ai_models WHERE providerId = :providerId ORDER BY displayName ASC")
+    suspend fun getModelsForProviderSnapshot(providerId: String): List<AiModelEntity>
 
     @Query("SELECT COUNT(*) FROM ai_models WHERE providerId = :providerId")
     suspend fun getModelCountForProvider(providerId: String): Int
@@ -50,6 +56,12 @@ interface ModelDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertModels(models: List<AiModelEntity>)
+
+    @Query("UPDATE ai_models SET isEnabled = :enabled WHERE providerId = :providerId AND modelId = :modelId")
+    suspend fun setModelEnabled(providerId: String, modelId: String, enabled: Boolean)
+
+    @Query("UPDATE ai_models SET isEnabled = :enabled WHERE providerId = :providerId")
+    suspend fun setAllModelsEnabled(providerId: String, enabled: Boolean)
 
     @Query("DELETE FROM ai_models WHERE providerId = :providerId AND isManual = 0")
     suspend fun deleteFetchedModelsForProvider(providerId: String)

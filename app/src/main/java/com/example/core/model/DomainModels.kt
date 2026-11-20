@@ -39,6 +39,7 @@ data class AiModelInfo(
     val contextWindow: Int? = null,
     val isManual: Boolean = false,
     val ownedBy: String = "",
+    val isEnabled: Boolean = true,
 )
 
 @Serializable

@@ -64,6 +64,7 @@ data class AiModelEntity(
     val contextWindow: Int?,
     val isManual: Boolean,
     val ownedBy: String,
+    val isEnabled: Boolean = true,
 )
 
 @Entity(tableName = "chats")
@@ -187,6 +188,7 @@ fun AiModelEntity.toDomain(): AiModelInfo = AiModelInfo(
     contextWindow = contextWindow,
     isManual = isManual,
     ownedBy = ownedBy,
+    isEnabled = isEnabled,
 )
 
 fun AiModelInfo.toEntity(): AiModelEntity = AiModelEntity(
@@ -197,6 +199,7 @@ fun AiModelInfo.toEntity(): AiModelEntity = AiModelEntity(
     contextWindow = contextWindow,
     isManual = isManual,
     ownedBy = ownedBy,
+    isEnabled = isEnabled,
 )
 
 fun ChatEntity.toDomain(): ChatSession = ChatSession(

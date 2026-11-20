@@ -80,6 +80,10 @@
     <string name="provider_never_checked">Ещё не проверялось</string>
     <string name="provider_models_loaded_count">Загружено моделей: %1$d</string>
     <string name="provider_models_section">Доступные модели (%1$d)</string>
+    <string name="provider_models_selected_header">Модели для чата (выбрано %1$d из %2$d)</string>
+    <string name="provider_models_select_all">Выбрать все</string>
+    <string name="provider_models_deselect_all">Снять все</string>
+    <string name="provider_model_default_cd">Сделать моделью по умолчанию</string>
     <string name="provider_models_show_all">Показать все (%1$d)</string>
     <string name="provider_models_hide">Свернуть модели</string>
     <string name="provider_models_refresh">Обновить модели</string>

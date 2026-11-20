@@ -80,6 +80,10 @@
     <string name="provider_never_checked">Not checked yet</string>
     <string name="provider_models_loaded_count">%1$d models loaded</string>
     <string name="provider_models_section">Available Models (%1$d)</string>
+    <string name="provider_models_selected_header">Chat Models (%1$d of %2$d selected)</string>
+    <string name="provider_models_select_all">Select All</string>
+    <string name="provider_models_deselect_all">Deselect All</string>
+    <string name="provider_model_default_cd">Set as default model</string>
     <string name="provider_models_show_all">Show all (%1$d)</string>
     <string name="provider_models_hide">Hide models</string>
     <string name="provider_models_refresh">Refresh models</string>

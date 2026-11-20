@@ -19,16 +19,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -498,13 +500,40 @@ fun ProviderConfigScreen(
             }
 
             if (state.models.isNotEmpty()) {
+                val selectedCount = state.models.count { it.isEnabled }
+                val allSelected = selectedCount == state.models.size
                 item(key = "loaded_models_header") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = stringResource(R.string.provider_models_section, state.models.size),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.provider_models_selected_header,
+                                    selectedCount,
+                                    state.models.size,
+                                ),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(
+                                onClick = { viewModel.setAllModelsSelected(!allSelected) },
+                                modifier = Modifier.testTag("toggle_all_models_button"),
+                            ) {
+                                Text(
+                                    stringResource(
+                                        if (allSelected) {
+                                            R.string.provider_models_deselect_all
+                                        } else {
+                                            R.string.provider_models_select_all
+                                        },
+                                    ),
+                                )
+                            }
+                        }
                         if (state.models.size > 6) {
                             OutlinedTextField(
                                 value = modelSearchQuery,
@@ -520,24 +549,30 @@ fun ProviderConfigScreen(
                 }
 
                 items(filteredModels, key = { "cfg_model_${it.modelId}" }) { model ->
-                    val isSelected = model.modelId == state.selectedModelId
+                    val isDefault = model.modelId == state.selectedModelId
+                    val isChecked = model.isEnabled
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                        color = if (isChecked) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                         } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { viewModel.selectDefaultModel(model.modelId) },
+                            .clickable { viewModel.toggleModelSelection(model.modelId) }
+                            .testTag("provider_model_row_${model.modelId}"),
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier.padding(start = 4.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = { viewModel.toggleModelSelection(model.modelId) },
+                            )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = model.displayName,
@@ -564,11 +599,17 @@ fun ProviderConfigScreen(
                                     }
                                 }
                             }
-                            if (isSelected) {
+                            IconButton(
+                                onClick = { viewModel.selectDefaultModel(model.modelId) },
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Outlined.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    imageVector = if (isDefault) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                                    contentDescription = stringResource(R.string.provider_model_default_cd),
+                                    tint = if (isDefault) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
                                 )
                             }
                         }

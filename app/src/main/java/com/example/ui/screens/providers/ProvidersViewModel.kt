@@ -62,7 +62,7 @@ class ProvidersViewModel @Inject constructor(
     val configuredProviders: StateFlow<List<ProviderConfig>> = providerRepository.observeProviders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allModels: StateFlow<List<AiModelInfo>> = providerRepository.observeAllModels()
+    val allModels: StateFlow<List<AiModelInfo>> = providerRepository.observeEnabledModels()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val modelsByProvider: StateFlow<Map<String, List<AiModelInfo>>> = allModels
@@ -188,11 +188,22 @@ class ProvidersViewModel @Inject constructor(
             _editorState.value = state.copy(isTesting = true, checkError = null, checkResult = null)
             val result = providerRepository.testConnection(draftConfig, state.apiKeyInput)
             val nextModels = if (result.success && result.models.isNotEmpty()) {
-                result.models
+                val previous = _editorState.value.models
+                if (previous.isEmpty()) {
+                    result.models
+                } else {
+                    val prevMap = previous.associate { it.modelId to it.isEnabled }
+                    val hasCurated = previous.any { !it.isEnabled }
+                    result.models.map { m ->
+                        m.copy(isEnabled = prevMap[m.modelId] ?: !hasCurated)
+                    }
+                }
             } else {
                 _editorState.value.models
             }
             val nextSelected = _editorState.value.selectedModelId
+                ?.takeIf { sel -> nextModels.isEmpty() || nextModels.any { it.modelId == sel && it.isEnabled } }
+                ?: nextModels.firstOrNull { it.isEnabled }?.modelId
                 ?: nextModels.firstOrNull()?.modelId
             _editorState.value = _editorState.value.copy(
                 isTesting = false,
@@ -210,18 +221,39 @@ class ProvidersViewModel @Inject constructor(
 
     fun saveAndFetchModels(onSaved: () -> Unit) {
         val state = _editorState.value
-        val draftConfig = buildDraftConfig(state)
+        val existingModels = state.models
+        val chosenDefault = state.selectedModelId
+            ?.takeIf { sel -> existingModels.isEmpty() || existingModels.any { it.modelId == sel && it.isEnabled } }
+            ?: existingModels.firstOrNull { it.isEnabled }?.modelId
+        val draftConfig = buildDraftConfig(state.copy(selectedModelId = chosenDefault))
         viewModelScope.launch {
-            _editorState.value = state.copy(isSaving = true, isFetchingModels = true, checkError = null)
+            _editorState.value = state.copy(isSaving = true, isFetchingModels = existingModels.isEmpty(), checkError = null)
             val saved = providerRepository.saveProvider(
                 config = draftConfig,
                 newApiKey = state.apiKeyInput,
                 fetchModelsAfterSave = false,
             )
+            if (existingModels.isNotEmpty()) {
+                providerRepository.saveModelsForProvider(saved.id, existingModels)
+                settingsDataStore.setOnboardingCompleted(true)
+                _editorState.value = _editorState.value.copy(
+                    isSaving = false,
+                    isFetchingModels = false,
+                    isExisting = true,
+                    selectedModelId = chosenDefault,
+                )
+                onSaved()
+                return@launch
+            }
+
             val fetchRes = providerRepository.fetchAndStoreModels(saved.id)
             settingsDataStore.setOnboardingCompleted(true)
             fetchRes.fold(
                 onSuccess = { models ->
+                    val enabledDefault = saved.selectedModelId
+                        ?.takeIf { sel -> models.any { it.modelId == sel && it.isEnabled } }
+                        ?: models.firstOrNull { it.isEnabled }?.modelId
+                        ?: models.firstOrNull()?.modelId
                     _editorState.value = _editorState.value.copy(
                         isSaving = false,
                         isFetchingModels = false,
@@ -230,7 +262,7 @@ class ProvidersViewModel @Inject constructor(
                         status = ProviderStatus.CONNECTED,
                         lastCheckedAt = System.currentTimeMillis(),
                         lastCheckMessage = "Models synced (${models.size})",
-                        selectedModelId = saved.selectedModelId ?: models.firstOrNull()?.modelId,
+                        selectedModelId = enabledDefault,
                         showManualModelPrompt = models.isEmpty(),
                     )
                     onSaved()
@@ -265,6 +297,10 @@ class ProvidersViewModel @Inject constructor(
             val res = providerRepository.fetchAndStoreModels(saved.id)
             res.fold(
                 onSuccess = { models ->
+                    val enabledDefault = saved.selectedModelId
+                        ?.takeIf { sel -> models.any { it.modelId == sel && it.isEnabled } }
+                        ?: models.firstOrNull { it.isEnabled }?.modelId
+                        ?: models.firstOrNull()?.modelId
                     _editorState.value = _editorState.value.copy(
                         isFetchingModels = false,
                         isExisting = true,
@@ -272,7 +308,7 @@ class ProvidersViewModel @Inject constructor(
                         status = ProviderStatus.CONNECTED,
                         lastCheckedAt = System.currentTimeMillis(),
                         lastCheckMessage = "Models synced (${models.size})",
-                        selectedModelId = saved.selectedModelId ?: models.firstOrNull()?.modelId,
+                        selectedModelId = enabledDefault,
                         showManualModelPrompt = models.isEmpty(),
                     )
                 },
@@ -298,11 +334,68 @@ class ProvidersViewModel @Inject constructor(
         }
     }
 
-    fun selectDefaultModel(modelId: String) {
+    fun toggleModelSelection(modelId: String) {
         val state = _editorState.value
-        _editorState.value = state.copy(selectedModelId = modelId)
+        var nextEnabled = true
+        val updatedModels = state.models.map { m ->
+            if (m.modelId == modelId) {
+                nextEnabled = !m.isEnabled
+                m.copy(isEnabled = nextEnabled)
+            } else {
+                m
+            }
+        }
+        val nextSelected = when {
+            nextEnabled && state.selectedModelId.isNullOrBlank() -> modelId
+            !nextEnabled && state.selectedModelId == modelId -> updatedModels.firstOrNull { it.isEnabled }?.modelId
+            else -> state.selectedModelId
+        }
+        _editorState.value = state.copy(
+            models = updatedModels,
+            selectedModelId = nextSelected,
+        )
         if (state.isExisting) {
             viewModelScope.launch {
+                providerRepository.setModelEnabled(state.id, modelId, nextEnabled)
+                if (nextSelected != state.selectedModelId) {
+                    providerRepository.setSelectedModel(state.id, nextSelected)
+                }
+            }
+        }
+    }
+
+    fun setAllModelsSelected(enabled: Boolean) {
+        val state = _editorState.value
+        val updatedModels = state.models.map { it.copy(isEnabled = enabled) }
+        val nextSelected = if (enabled) {
+            state.selectedModelId ?: updatedModels.firstOrNull()?.modelId
+        } else {
+            null
+        }
+        _editorState.value = state.copy(
+            models = updatedModels,
+            selectedModelId = nextSelected,
+        )
+        if (state.isExisting) {
+            viewModelScope.launch {
+                providerRepository.setAllModelsEnabled(state.id, enabled)
+                providerRepository.setSelectedModel(state.id, nextSelected)
+            }
+        }
+    }
+
+    fun selectDefaultModel(modelId: String) {
+        val state = _editorState.value
+        val updatedModels = state.models.map { m ->
+            if (m.modelId == modelId && !m.isEnabled) m.copy(isEnabled = true) else m
+        }
+        _editorState.value = state.copy(
+            models = updatedModels,
+            selectedModelId = modelId,
+        )
+        if (state.isExisting) {
+            viewModelScope.launch {
+                providerRepository.setModelEnabled(state.id, modelId, true)
                 providerRepository.setSelectedModel(state.id, modelId)
             }
         }

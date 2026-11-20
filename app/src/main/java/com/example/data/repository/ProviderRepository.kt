@@ -57,6 +57,9 @@ class ProviderRepository @Inject constructor(
     fun observeAllModels(): Flow<List<AiModelInfo>> =
         modelDao.observeAllModels().map { list -> list.map { it.toDomain() } }
 
+    fun observeEnabledModels(): Flow<List<AiModelInfo>> =
+        modelDao.observeEnabledModels().map { list -> list.map { it.toDomain() } }
+
     fun observeModelsForProvider(providerId: String): Flow<List<AiModelInfo>> =
         modelDao.observeModelsForProvider(providerId).map { list -> list.map { it.toDomain() } }
 
@@ -94,12 +97,18 @@ class ProviderRepository @Inject constructor(
         val result = providerRegistry.testConnectionWithAutoDetect(config, activeKey)
         if (config.id.isNotBlank() && providerDao.getProvider(config.id) != null) {
             val status = if (result.success) ProviderStatus.CONNECTED else ProviderStatus.ERROR
-            if (result.success && result.models.isNotEmpty()) {
-                modelDao.replaceFetchedModels(config.id, result.models.map { it.toEntity() })
+            val mergedModels = if (result.success && result.models.isNotEmpty()) {
+                val merged = mergeExistingSelections(config.id, result.models)
+                modelDao.replaceFetchedModels(config.id, merged.map { it.toEntity() })
+                merged
+            } else {
+                emptyList()
             }
+            val enabledModels = mergedModels.filter { it.isEnabled }
             val nextSelected = config.selectedModelId
-                ?.takeIf { existing -> result.models.isEmpty() || result.models.any { it.modelId == existing } }
-                ?: result.models.firstOrNull()?.modelId
+                ?.takeIf { existing -> mergedModels.isEmpty() || enabledModels.any { it.modelId == existing } }
+                ?: enabledModels.firstOrNull()?.modelId
+                ?: mergedModels.firstOrNull()?.modelId
             val updated = config.copy(
                 resolvedProtocol = result.resolvedProtocol,
                 status = status,
@@ -108,6 +117,7 @@ class ProviderRepository @Inject constructor(
                 selectedModelId = nextSelected,
             )
             providerDao.upsertProvider(updated.toEntity())
+            return result.copy(models = mergedModels)
         }
         return result
     }
@@ -132,44 +142,71 @@ class ProviderRepository @Inject constructor(
         val impl = providerRegistry.getProvider(provider)
         val result = impl.fetchModels(provider, apiKey)
 
-        result.fold(
-            onSuccess = { models ->
-                modelDao.replaceFetchedModels(providerId, models.map { it.toEntity() })
-                val defaultSelected = provider.selectedModelId
-                    ?.takeIf { existing -> models.any { it.modelId == existing } }
-                    ?: models.firstOrNull()?.modelId
-                providerDao.upsertProvider(
-                    provider.copy(
-                        status = ProviderStatus.CONNECTED,
-                        lastCheckedAt = System.currentTimeMillis(),
-                        lastCheckMessage = "Models synced (${models.size})",
-                        selectedModelId = defaultSelected,
-                    ).toEntity(),
-                )
-            },
-            onFailure = { throwable ->
-                val err = ErrorParser.fromThrowable(
-                    throwable,
-                    providerName = provider.displayName,
-                    endpointUrl = provider.baseUrl,
-                    activeApiKey = apiKey,
-                )
-                val nextStatus = if (err.httpStatus == 404 || err.httpStatus == 405) {
-                    // Endpoint doesn't list models; keep connected if previously connected or allow manual entry
-                    provider.status
-                } else {
-                    ProviderStatus.ERROR
-                }
-                providerDao.upsertProvider(
-                    provider.copy(
-                        status = nextStatus,
-                        lastCheckedAt = System.currentTimeMillis(),
-                        lastCheckMessage = err.providerMessage,
-                    ).toEntity(),
-                )
-            },
-        )
-        return result
+        return result.map { fetched ->
+            val merged = mergeExistingSelections(providerId, fetched)
+            modelDao.replaceFetchedModels(providerId, merged.map { it.toEntity() })
+            val enabledModels = merged.filter { it.isEnabled }
+            val defaultSelected = provider.selectedModelId
+                ?.takeIf { existing -> enabledModels.any { it.modelId == existing } }
+                ?: enabledModels.firstOrNull()?.modelId
+                ?: merged.firstOrNull()?.modelId
+            providerDao.upsertProvider(
+                provider.copy(
+                    status = ProviderStatus.CONNECTED,
+                    lastCheckedAt = System.currentTimeMillis(),
+                    lastCheckMessage = "Models synced (${merged.size})",
+                    selectedModelId = defaultSelected,
+                ).toEntity(),
+            )
+            merged
+        }.onFailure { throwable ->
+            val err = ErrorParser.fromThrowable(
+                throwable,
+                providerName = provider.displayName,
+                endpointUrl = provider.baseUrl,
+                activeApiKey = apiKey,
+            )
+            val nextStatus = if (err.httpStatus == 404 || err.httpStatus == 405) {
+                provider.status
+            } else {
+                ProviderStatus.ERROR
+            }
+            providerDao.upsertProvider(
+                provider.copy(
+                    status = nextStatus,
+                    lastCheckedAt = System.currentTimeMillis(),
+                    lastCheckMessage = err.providerMessage,
+                ).toEntity(),
+            )
+        }
+    }
+
+    private suspend fun mergeExistingSelections(providerId: String, fetched: List<AiModelInfo>): List<AiModelInfo> {
+        val existing = modelDao.getModelsForProviderSnapshot(providerId)
+        if (existing.isEmpty()) return fetched
+        val existingMap = existing.associate { it.modelId to it.isEnabled }
+        val hasCuratedSubset = existing.any { !it.isEnabled }
+        return fetched.map { model ->
+            val enabled = existingMap[model.modelId] ?: !hasCuratedSubset
+            model.copy(isEnabled = enabled)
+        }
+    }
+
+    suspend fun saveModelsForProvider(providerId: String, models: List<AiModelInfo>) {
+        val fetched = models.filter { !it.isManual }.map { it.copy(providerId = providerId).toEntity() }
+        val manual = models.filter { it.isManual }.map { it.copy(providerId = providerId).toEntity() }
+        modelDao.replaceFetchedModels(providerId, fetched)
+        if (manual.isNotEmpty()) {
+            modelDao.upsertModels(manual)
+        }
+    }
+
+    suspend fun setModelEnabled(providerId: String, modelId: String, enabled: Boolean) {
+        modelDao.setModelEnabled(providerId, modelId, enabled)
+    }
+
+    suspend fun setAllModelsEnabled(providerId: String, enabled: Boolean) {
+        modelDao.setAllModelsEnabled(providerId, enabled)
     }
 
     suspend fun addManualModel(providerId: String, rawModelId: String) {
@@ -182,6 +219,7 @@ class ProviderRepository @Inject constructor(
             capabilities = CapabilityInferencer.inferCapabilities(trimmed, trimmed),
             isManual = true,
             ownedBy = "manual",
+            isEnabled = true,
         )
         modelDao.upsertModels(listOf(model.toEntity()))
         val provider = providerDao.getProvider(providerId)
@@ -204,8 +242,8 @@ class ProviderRepository @Inject constructor(
         providerDao.setEnabled(providerId, enabled)
     }
 
-    suspend fun setSelectedModel(providerId: String, modelId: String) {
-        providerDao.setSelectedModel(providerId, modelId)
+    suspend fun setSelectedModel(providerId: String, modelId: String?) {
+        providerDao.setSelectedModel(providerId, modelId.orEmpty())
     }
 
     suspend fun deleteProvider(providerId: String) {

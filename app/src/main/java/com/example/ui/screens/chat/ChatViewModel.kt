@@ -96,7 +96,7 @@ class ChatViewModel @Inject constructor(
         chatFlow,
         messagesFlow,
         providerRepository.observeProviders(),
-        providerRepository.observeAllModels(),
+        providerRepository.observeEnabledModels(),
         combine(
             combine(inputText, stagedAttachments, editingMessage, isLoadingAttachment) { a, b, c, d ->
                 arrayOf(a, b, c, d)
@@ -121,10 +121,13 @@ class ChatViewModel @Inject constructor(
             ?: enabledProviders.firstOrNull { it.hasApiKey || !it.type.requiresApiKey }
             ?: enabledProviders.firstOrNull()
 
+        val providerModels = models.filter { it.providerId == activeProv?.id }
         val chatModelMatchesProvider = chat?.providerId == null || chat.providerId == activeProv?.id
         val activeModel = chat?.modelId?.takeIf { !it.isNullOrBlank() && chatModelMatchesProvider }
-            ?: activeProv?.selectedModelId
-            ?: models.firstOrNull { it.providerId == activeProv?.id }?.modelId
+            ?: activeProv?.selectedModelId?.takeIf { selected ->
+                providerModels.isEmpty() || providerModels.any { it.modelId == selected }
+            }
+            ?: providerModels.firstOrNull()?.modelId
 
         val detected = UrlDetector.extractUrls(text)
             .filter { url -> attachments.none { it.type == AttachmentType.WEB_LINK && it.url == url } }

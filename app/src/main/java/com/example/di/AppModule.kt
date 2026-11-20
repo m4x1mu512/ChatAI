@@ -3,6 +3,7 @@ package com.example.di
 import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.local.AppDatabase
 import com.example.data.local.AttachmentDao
@@ -23,6 +24,12 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
+    private val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE ai_models ADD COLUMN isEnabled INTEGER NOT NULL DEFAULT 1")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
@@ -30,16 +37,17 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "ai_chat_database.db",
-        ).addCallback(
-            object : RoomDatabase.Callback() {
-                override fun onOpen(db: SupportSQLiteDatabase) {
-                    super.onOpen(db)
-                    db.execSQL(
-                        "UPDATE providers SET baseUrl = 'https://coarena.ai/api/v1' WHERE type = 'COARENA' AND baseUrl IN ('https://api.coarena.com/v1', 'https://api.coarena.com', 'https://api.coarena.com/')",
-                    )
-                }
-            },
-        ).build()
+        ).addMigrations(MIGRATION_1_2)
+            .addCallback(
+                object : RoomDatabase.Callback() {
+                    override fun onOpen(db: SupportSQLiteDatabase) {
+                        super.onOpen(db)
+                        db.execSQL(
+                            "UPDATE providers SET baseUrl = 'https://coarena.ai/api/v1' WHERE type = 'COARENA' AND baseUrl IN ('https://api.coarena.com/v1', 'https://api.coarena.com', 'https://api.coarena.com/')",
+                        )
+                    }
+                },
+            ).build()
     }
 
     @Provides
