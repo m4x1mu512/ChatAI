@@ -64,7 +64,7 @@ gradle :app:assembleRelease :app:bundleRelease
 В **Settings → Secrets and variables → Actions** добавьте:
 - `ANDROID_KEYSTORE_BASE64` — keystore в формате Base64 (`base64 -w 0 release.jks`).
 - `ANDROID_KEYSTORE_PASSWORD` — пароль хранилища ключей.
-- `ANDROID_KEY_ALIAS` — alias ключа (по умолчанию `upload` в `signingConfigs`).
+- `ANDROID_KEY_ALIAS` — alias ключа (в `signingConfigs` используется `upload`; при указании другого alias CI автоматически сопоставит его на временной копии keystore).
 - `ANDROID_KEY_PASSWORD` — пароль ключа.
 
 ### Отчёты об ошибках и диагностика
@@ -122,7 +122,7 @@ gradle :app:assembleRelease :app:bundleRelease
 Configure these repository secrets for CI release signing:
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_ALIAS` (must be `upload` to match `signingConfigs`)
+- `ANDROID_KEY_ALIAS` (`signingConfigs` uses `upload`; if you use a custom alias, CI maps it automatically on the temporary keystore copy)
 - `ANDROID_KEY_PASSWORD`
 
 ### Reporting Errors & Copying Diagnostics
