@@ -44,17 +44,20 @@ Coarena, OpenAI, Perplexity, Anthropic, Claude Code, Google Gemini, DeepSeek, Gr
 
 ### Сборка Debug и Release
 ```bash
+# Декодирование debug.keystore (если отсутствует локально)
+[ -f debug.keystore ] || base64 -d debug.keystore.base64 > debug.keystore
+
 # Проверка lint и unit-тестов
-./gradlew lint test
+gradle :app:lintDebug :app:testDebugUnitTest
 
 # Debug APK
-./gradlew assembleDebug
+gradle :app:assembleDebug
 
 # Release APK и AAB (требуются переменные окружения подписи)
 export KEYSTORE_PATH=/path/to/upload-keystore.jks
 export STORE_PASSWORD=...
 export KEY_PASSWORD=...
-./gradlew assembleRelease bundleRelease
+gradle :app:assembleRelease :app:bundleRelease
 ```
 
 ### Необходимые GitHub Secrets для CI
@@ -109,16 +112,17 @@ Coarena, OpenAI, Perplexity, Anthropic, Claude Code, Google Gemini, DeepSeek, Gr
 
 ### Building Debug & Release
 ```bash
-./gradlew lint test
-./gradlew assembleDebug
-./gradlew assembleRelease bundleRelease
+[ -f debug.keystore ] || base64 -d debug.keystore.base64 > debug.keystore
+gradle :app:lintDebug :app:testDebugUnitTest
+gradle :app:assembleDebug
+gradle :app:assembleRelease :app:bundleRelease
 ```
 
 ### Required GitHub Secrets
 Configure these repository secrets for CI release signing:
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_ALIAS` (must be `upload` to match `signingConfigs`)
 - `ANDROID_KEY_PASSWORD`
 
 ### Reporting Errors & Copying Diagnostics

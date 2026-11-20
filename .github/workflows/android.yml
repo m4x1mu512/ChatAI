@@ -23,42 +23,43 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Cache Gradle packages and wrapper
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle/libs.versions.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Setup Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Materialize debug keystore
+        run: |
+          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
 
       - name: Run Lint and Unit Tests
-        run: ./gradlew lint test
+        run: gradle :app:lintDebug :app:testDebugUnitTest
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug
+        run: gradle :app:assembleDebug
 
       - name: Decode Release Keystore
-        if: secrets.ANDROID_KEYSTORE_BASE64 != ''
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          echo "$KEYSTORE_B64" | base64 --decode > "${{ runner.temp }}/release-keystore.jks"
+          echo "$KEYSTORE_B64" | base64 -d > "${{ runner.temp }}/release-keystore.jks"
           echo "KEYSTORE_PATH=${{ runner.temp }}/release-keystore.jks" >> "$GITHUB_ENV"
 
       - name: Build Release APK & AAB
-        if: secrets.ANDROID_KEYSTORE_BASE64 != ''
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: ./gradlew assembleRelease bundleRelease
+        run: gradle :app:assembleRelease :app:bundleRelease
 
-      - name: Cleanup Keystore
+      - name: Cleanup Release Keystore
         if: always()
         run: rm -f "${{ runner.temp }}/release-keystore.jks"
 
@@ -73,7 +74,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEYSTORE_BASE64 != ''
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         uses: softprops/action-gh-release@v2
         with:
           files: |
