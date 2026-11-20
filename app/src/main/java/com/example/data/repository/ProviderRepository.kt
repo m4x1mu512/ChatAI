@@ -94,15 +94,35 @@ class ProviderRepository @Inject constructor(
         val result = providerRegistry.testConnectionWithAutoDetect(config, activeKey)
         if (config.id.isNotBlank() && providerDao.getProvider(config.id) != null) {
             val status = if (result.success) ProviderStatus.CONNECTED else ProviderStatus.ERROR
+            if (result.success && result.models.isNotEmpty()) {
+                modelDao.replaceFetchedModels(config.id, result.models.map { it.toEntity() })
+            }
+            val nextSelected = config.selectedModelId
+                ?.takeIf { existing -> result.models.isEmpty() || result.models.any { it.modelId == existing } }
+                ?: result.models.firstOrNull()?.modelId
             val updated = config.copy(
                 resolvedProtocol = result.resolvedProtocol,
                 status = status,
                 lastCheckedAt = System.currentTimeMillis(),
                 lastCheckMessage = result.message,
+                selectedModelId = nextSelected,
             )
             providerDao.upsertProvider(updated.toEntity())
         }
         return result
+    }
+
+    suspend fun syncMissingModelsForConnectedProviders() {
+        val providers = providerDao.getAllProviders()
+        for (entity in providers) {
+            if (!entity.isEnabled) continue
+            val isConnectedOrConfigured = entity.status == ProviderStatus.CONNECTED.name ||
+                secureKeyStore.hasApiKey(entity.id)
+            if (!isConnectedOrConfigured) continue
+            if (modelDao.getModelCountForProvider(entity.id) == 0) {
+                runCatching { fetchAndStoreModels(entity.id) }
+            }
+        }
     }
 
     suspend fun fetchAndStoreModels(providerId: String): Result<List<AiModelInfo>> {

@@ -14,6 +14,7 @@ data class ConnectionCheckResult(
     val resolvedProtocol: ApiProtocol,
     val message: String,
     val modelsCount: Int = 0,
+    val models: List<AiModelInfo> = emptyList(),
     val error: AiError? = null,
 )
 

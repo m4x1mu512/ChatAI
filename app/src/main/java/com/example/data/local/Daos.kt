@@ -12,6 +12,9 @@ interface ProviderDao {
     @Query("SELECT * FROM providers ORDER BY sortOrder ASC, displayName ASC")
     fun observeProviders(): Flow<List<ProviderEntity>>
 
+    @Query("SELECT * FROM providers ORDER BY sortOrder ASC, displayName ASC")
+    suspend fun getAllProviders(): List<ProviderEntity>
+
     @Query("SELECT * FROM providers WHERE id = :id")
     suspend fun getProvider(id: String): ProviderEntity?
 
@@ -38,6 +41,9 @@ interface ModelDao {
 
     @Query("SELECT * FROM ai_models WHERE providerId = :providerId ORDER BY displayName ASC")
     fun observeModelsForProvider(providerId: String): Flow<List<AiModelEntity>>
+
+    @Query("SELECT COUNT(*) FROM ai_models WHERE providerId = :providerId")
+    suspend fun getModelCountForProvider(providerId: String): Int
 
     @Query("SELECT * FROM ai_models WHERE providerId = :providerId AND modelId = :modelId")
     suspend fun getModel(providerId: String, modelId: String): AiModelEntity?

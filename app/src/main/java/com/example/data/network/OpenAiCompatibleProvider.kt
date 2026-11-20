@@ -23,7 +23,9 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonArray
@@ -79,6 +81,7 @@ class OpenAiCompatibleProvider @Inject constructor(
                         resolvedProtocol = protocol,
                         message = "Connected (${models.size} models)",
                         modelsCount = models.size,
+                        models = models,
                     )
                 },
                 onFailure = { throwable ->
@@ -178,36 +181,75 @@ class OpenAiCompatibleProvider @Inject constructor(
             }
         }
 
-    private fun parseModelsResponse(providerId: String, bodyStr: String): List<AiModelInfo> {
-        val root = json.parseToJsonElement(bodyStr)
-        val array = when {
-            root is JsonObject && root["data"] != null -> root["data"]!!.jsonArray
-            root is JsonObject && root["models"] != null -> root["models"]!!.jsonArray
-            else -> root.jsonArray
+    internal fun parseModelsResponse(providerId: String, bodyStr: String): List<AiModelInfo> =
+        parseModelsJson(providerId, bodyStr)
+
+    companion object {
+        private val modelsJsonParser = Json { ignoreUnknownKeys = true }
+
+        internal fun parseModelsJson(providerId: String, bodyStr: String): List<AiModelInfo> {
+            val root = runCatching { modelsJsonParser.parseToJsonElement(bodyStr) }.getOrNull() ?: return emptyList()
+            val array: JsonArray = when (root) {
+                is JsonArray -> root
+                is JsonObject -> {
+                    val dataField = root["data"]
+                    when {
+                        dataField is JsonArray -> dataField
+                        dataField is JsonObject && dataField["models"] is JsonArray -> dataField["models"] as JsonArray
+                        dataField is JsonObject && dataField["items"] is JsonArray -> dataField["items"] as JsonArray
+                        root["models"] is JsonArray -> root["models"] as JsonArray
+                        root["results"] is JsonArray -> root["results"] as JsonArray
+                        root["items"] is JsonArray -> root["items"] as JsonArray
+                        else -> JsonArray(emptyList())
+                    }
+                }
+                else -> JsonArray(emptyList())
+            }
+            return array.mapNotNull { element ->
+                when (element) {
+                    is JsonPrimitive -> {
+                        val id = element.contentOrNull?.trim().orEmpty()
+                        if (id.isEmpty()) return@mapNotNull null
+                        AiModelInfo(
+                            providerId = providerId,
+                            modelId = id,
+                            displayName = id,
+                            capabilities = CapabilityInferencer.inferCapabilities(id, id),
+                            isManual = false,
+                            ownedBy = "",
+                        )
+                    }
+                    is JsonObject -> {
+                        val id = (element["id"] as? JsonPrimitive)?.contentOrNull
+                            ?: (element["model"] as? JsonPrimitive)?.contentOrNull
+                            ?: (element["name"] as? JsonPrimitive)?.contentOrNull
+                            ?: (element["slug"] as? JsonPrimitive)?.contentOrNull
+                            ?: return@mapNotNull null
+                        val display = (element["display_name"] as? JsonPrimitive)?.contentOrNull
+                            ?: (element["displayName"] as? JsonPrimitive)?.contentOrNull
+                            ?: (element["name"] as? JsonPrimitive)?.contentOrNull
+                            ?: id
+                        val ownedBy = (element["owned_by"] as? JsonPrimitive)?.contentOrNull
+                            ?: (element["provider"] as? JsonPrimitive)?.contentOrNull
+                            ?: ""
+                        val ctx = (element["context_length"] as? JsonPrimitive)?.intOrNull
+                            ?: (element["context_window"] as? JsonPrimitive)?.intOrNull
+                            ?: (element["max_context_length"] as? JsonPrimitive)?.intOrNull
+                        val caps = CapabilityInferencer.inferCapabilities(id, display)
+                        AiModelInfo(
+                            providerId = providerId,
+                            modelId = id,
+                            displayName = display,
+                            capabilities = caps,
+                            contextWindow = ctx,
+                            isManual = false,
+                            ownedBy = ownedBy,
+                        )
+                    }
+                    else -> null
+                }
+            }.distinctBy { it.modelId }.sortedBy { it.displayName.lowercase() }
         }
-        return array.mapNotNull { element ->
-            val obj = element.jsonObject
-            val id = obj["id"]?.jsonPrimitive?.contentOrNull
-                ?: obj["model"]?.jsonPrimitive?.contentOrNull
-                ?: obj["name"]?.jsonPrimitive?.contentOrNull
-                ?: return@mapNotNull null
-            val display = obj["display_name"]?.jsonPrimitive?.contentOrNull
-                ?: obj["name"]?.jsonPrimitive?.contentOrNull
-                ?: id
-            val ownedBy = obj["owned_by"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            val ctx = obj["context_length"]?.jsonPrimitive?.intOrNull
-                ?: obj["context_window"]?.jsonPrimitive?.intOrNull
-            val caps = CapabilityInferencer.inferCapabilities(id, display)
-            AiModelInfo(
-                providerId = providerId,
-                modelId = id,
-                displayName = display,
-                capabilities = caps,
-                contextWindow = ctx,
-                isManual = false,
-                ownedBy = ownedBy,
-            )
-        }.sortedBy { it.displayName.lowercase() }
     }
 
     override fun streamChat(

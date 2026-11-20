@@ -76,6 +76,10 @@
     <string name="provider_last_check">Last check: %1$s</string>
     <string name="provider_never_checked">Not checked yet</string>
     <string name="provider_models_loaded_count">%1$d models loaded</string>
+    <string name="provider_models_section">Available Models (%1$d)</string>
+    <string name="provider_models_show_all">Show all (%1$d)</string>
+    <string name="provider_models_hide">Hide models</string>
+    <string name="provider_models_refresh">Refresh models</string>
     <string name="provider_manual_model_title">Add Model ID Manually</string>
     <string name="provider_manual_model_hint">e.g. gpt-4o, claude-sonnet-4-5, llama3.3</string>
     <string name="provider_manual_model_note">Automatic model listing is unavailable for this endpoint. Enter a model ID manually.</string>

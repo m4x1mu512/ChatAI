@@ -51,6 +51,7 @@ data class ChatUiState(
     val isGenerating: Boolean = false,
     val editingMessage: ChatMessage? = null,
     val isLoadingAttachment: Boolean = false,
+    val refreshingProviderIds: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -70,9 +71,16 @@ class ChatViewModel @Inject constructor(
     private val editingMessage = MutableStateFlow<ChatMessage?>(null)
     private val isLoadingAttachment = MutableStateFlow(false)
     private val unsupportedWarning = MutableStateFlow<AttachmentType?>(null)
+    private val refreshingProviderIds = MutableStateFlow<Set<String>>(emptySet())
 
     private var activeGenerationJob: Job? = null
     private var pendingCameraFile: File? = null
+
+    init {
+        viewModelScope.launch {
+            providerRepository.syncMissingModelsForConnectedProviders()
+        }
+    }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val chatFlow = activeChatId.flatMapLatest { id ->
@@ -89,16 +97,23 @@ class ChatViewModel @Inject constructor(
         messagesFlow,
         providerRepository.observeProviders(),
         providerRepository.observeAllModels(),
-        combine(inputText, stagedAttachments, editingMessage, isLoadingAttachment, unsupportedWarning) { a, b, c, d, e ->
-            arrayOf(a, b, c, d, e)
+        combine(
+            combine(inputText, stagedAttachments, editingMessage, isLoadingAttachment) { a, b, c, d ->
+                arrayOf(a, b, c, d)
+            },
+            combine(unsupportedWarning, refreshingProviderIds) { e, f -> e to f },
+        ) { coreExtras, auxExtras ->
+            coreExtras to auxExtras
         },
-    ) { chat, messages, providers, models, extras ->
+    ) { chat, messages, providers, models, bundledExtras ->
+        val (extras, auxExtras) = bundledExtras
         val text = extras[0] as String
         @Suppress("UNCHECKED_CAST")
         val attachments = extras[1] as List<Attachment>
         val editing = extras[2] as ChatMessage?
         val loadingAtt = extras[3] as Boolean
-        val warning = extras[4] as AttachmentType?
+        val warning = auxExtras.first
+        val refreshing = auxExtras.second
 
         val enabledProviders = providers.filter { it.isEnabled }
         val activeProv = enabledProviders.firstOrNull { it.id == chat?.providerId }
@@ -130,11 +145,26 @@ class ChatViewModel @Inject constructor(
             isGenerating = generating,
             editingMessage = editing,
             isLoadingAttachment = loadingAtt,
+            refreshingProviderIds = refreshing,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatUiState())
 
     fun loadChat(chatId: String) {
         activeChatId.value = chatId
+    }
+
+    fun syncConnectedProviderModels() {
+        viewModelScope.launch {
+            providerRepository.syncMissingModelsForConnectedProviders()
+        }
+    }
+
+    fun refreshProviderModels(providerId: String) {
+        viewModelScope.launch {
+            refreshingProviderIds.value = refreshingProviderIds.value + providerId
+            providerRepository.fetchAndStoreModels(providerId)
+            refreshingProviderIds.value = refreshingProviderIds.value - providerId
+        }
     }
 
     fun updateInputText(text: String) {

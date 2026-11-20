@@ -264,7 +264,10 @@ fun ChatScreen(
                             modifier = Modifier
                                 .padding(top = 2.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .clickable { showModelPicker = true }
+                                .clickable {
+                                    viewModel.syncConnectedProviderModels()
+                                    showModelPicker = true
+                                }
                                 .testTag("model_selector_pill"),
                         ) {
                             Row(
@@ -624,8 +627,10 @@ fun ChatScreen(
             models = state.models,
             selectedProviderId = state.activeProvider?.id,
             selectedModelId = state.activeModelId,
+            refreshingProviderIds = state.refreshingProviderIds,
             onSelectModel = viewModel::selectModel,
             onAddManualModel = viewModel::addManualModel,
+            onRefreshModels = viewModel::refreshProviderModels,
             onDismiss = { showModelPicker = false },
         )
     }

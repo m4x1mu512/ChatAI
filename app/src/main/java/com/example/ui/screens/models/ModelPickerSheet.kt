@@ -20,10 +20,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -57,8 +60,10 @@ fun ModelPickerSheet(
     models: List<AiModelInfo>,
     selectedProviderId: String?,
     selectedModelId: String?,
+    refreshingProviderIds: Set<String> = emptySet(),
     onSelectModel: (ProviderConfig, AiModelInfo) -> Unit,
     onAddManualModel: (providerId: String, modelId: String) -> Unit,
+    onRefreshModels: ((providerId: String) -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -124,6 +129,7 @@ fun ModelPickerSheet(
                 ) {
                     modelsByProvider.forEach { (provider, providerModels) ->
                         item(key = "hdr_${provider.id}") {
+                            val isRefreshing = provider.id in refreshingProviderIds
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -131,36 +137,78 @@ fun ModelPickerSheet(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f),
+                                ) {
                                     ProviderLogoBadge(providerType = provider.type, size = 26.dp)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = provider.displayName,
+                                        text = "${provider.displayName} (${providerModels.size})",
                                         style = MaterialTheme.typography.titleSmall,
                                         color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
-                                TextButton(
-                                    onClick = {
-                                        manualModelText = ""
-                                        manualDialogProvider = provider
-                                    },
-                                ) {
-                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text(stringResource(R.string.provider_add_manual_model), style = MaterialTheme.typography.labelSmall)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (onRefreshModels != null) {
+                                        if (isRefreshing) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier
+                                                    .padding(horizontal = 8.dp)
+                                                    .size(16.dp),
+                                                strokeWidth = 2.dp,
+                                            )
+                                        } else {
+                                            IconButton(
+                                                onClick = { onRefreshModels(provider.id) },
+                                                modifier = Modifier.size(36.dp),
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Refresh,
+                                                    contentDescription = stringResource(R.string.provider_models_refresh),
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            manualModelText = ""
+                                            manualDialogProvider = provider
+                                        },
+                                    ) {
+                                        Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        Text(stringResource(R.string.provider_add_manual_model), style = MaterialTheme.typography.labelSmall)
+                                    }
                                 }
                             }
                         }
 
                         if (providerModels.isEmpty() && searchQuery.isBlank()) {
                             item(key = "empty_${provider.id}") {
-                                Text(
-                                    text = stringResource(R.string.provider_manual_model_note),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                Row(
                                     modifier = Modifier.padding(start = 34.dp, bottom = 4.dp),
-                                )
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.provider_manual_model_note),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (onRefreshModels != null) {
+                                        TextButton(
+                                            onClick = { onRefreshModels(provider.id) },
+                                            enabled = provider.id !in refreshingProviderIds,
+                                        ) {
+                                            Text(stringResource(R.string.provider_fetch_models))
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             items(providerModels, key = { "m_${provider.id}_${it.modelId}" }) { model ->

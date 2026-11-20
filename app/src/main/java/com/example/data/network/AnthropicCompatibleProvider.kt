@@ -22,7 +22,9 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -74,6 +76,7 @@ class AnthropicCompatibleProvider @Inject constructor(
                         resolvedProtocol = protocol,
                         message = "Connected (${models.size} models)",
                         modelsCount = models.size,
+                        models = models,
                     )
                 },
                 onFailure = { throwable ->
@@ -117,12 +120,20 @@ class AnthropicCompatibleProvider @Inject constructor(
                             ),
                         )
                     }
-                    val root = json.parseToJsonElement(bodyStr).jsonObject
-                    val data = root["data"]?.jsonArray ?: buildJsonArray {}
+                    val root = runCatching { json.parseToJsonElement(bodyStr) }.getOrNull()
+                    val data = when (root) {
+                        is JsonArray -> root
+                        is JsonObject -> (root["data"] as? JsonArray) ?: (root["models"] as? JsonArray) ?: JsonArray(emptyList())
+                        else -> JsonArray(emptyList())
+                    }
                     data.mapNotNull { elem ->
-                        val obj = elem.jsonObject
-                        val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                        val display = obj["display_name"]?.jsonPrimitive?.contentOrNull ?: id
+                        val obj = elem as? JsonObject ?: return@mapNotNull null
+                        val id = (obj["id"] as? JsonPrimitive)?.contentOrNull
+                            ?: (obj["model"] as? JsonPrimitive)?.contentOrNull
+                            ?: return@mapNotNull null
+                        val display = (obj["display_name"] as? JsonPrimitive)?.contentOrNull
+                            ?: (obj["name"] as? JsonPrimitive)?.contentOrNull
+                            ?: id
                         AiModelInfo(
                             providerId = config.id,
                             modelId = id,
@@ -131,7 +142,7 @@ class AnthropicCompatibleProvider @Inject constructor(
                             isManual = false,
                             ownedBy = "anthropic",
                         )
-                    }.sortedBy { it.displayName.lowercase() }
+                    }.distinctBy { it.modelId }.sortedBy { it.displayName.lowercase() }
                 }
             }
         }

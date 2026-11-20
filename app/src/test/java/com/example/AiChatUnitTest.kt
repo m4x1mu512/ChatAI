@@ -7,6 +7,7 @@ import com.example.core.model.CapabilityInferencer
 import com.example.core.model.ModelCapability
 import com.example.core.model.ProviderType
 import com.example.core.util.UrlDetector
+import com.example.data.network.OpenAiCompatibleProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -85,5 +86,41 @@ class AiChatUnitTest {
         )
         assertEquals(AiErrorCategory.INVALID_BASE_URL, err.category)
         assertEquals("WAF_CHALLENGE_HTTP_403", err.errorCode)
+    }
+
+    @Test
+    fun `parseModelsJson handles coarena payload with null fields and nested shapes`() {
+        val sampleJson = """
+            {
+              "object": "list",
+              "data": [
+                {
+                  "id": "gpt-4o",
+                  "object": "model",
+                  "owned_by": "openai",
+                  "display_name": null,
+                  "context_length": 128000,
+                  "pricing": {"prompt": "0.0025"}
+                },
+                {
+                  "id": "claude-3-7-sonnet",
+                  "object": "model",
+                  "owned_by": "anthropic",
+                  "name": "Claude 3.7 Sonnet",
+                  "context_window": null
+                }
+              ]
+            }
+        """.trimIndent()
+        val parsed = OpenAiCompatibleProvider.parseModelsJson("coarena-1", sampleJson)
+        assertEquals(2, parsed.size)
+        assertEquals("claude-3-7-sonnet", parsed[0].modelId)
+        assertEquals("Claude 3.7 Sonnet", parsed[0].displayName)
+        assertEquals("gpt-4o", parsed[1].modelId)
+        assertEquals(128000, parsed[1].contextWindow)
+
+        val nestedJson = """{"data":{"models":["llama-3.3-70b","qwen-2.5-72b"]}}"""
+        val nestedParsed = OpenAiCompatibleProvider.parseModelsJson("custom-1", nestedJson)
+        assertEquals(listOf("llama-3.3-70b", "qwen-2.5-72b"), nestedParsed.map { it.modelId })
     }
 }

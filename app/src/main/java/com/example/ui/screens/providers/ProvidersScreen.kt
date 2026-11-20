@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,13 +23,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
+import com.example.core.model.AiModelInfo
 import com.example.core.model.ProviderConfig
 import com.example.core.model.ProviderStatus
 import com.example.core.model.ProviderType
@@ -75,6 +84,8 @@ fun ProvidersScreen(
     modifier: Modifier = Modifier,
 ) {
     val configured by viewModel.configuredProviders.collectAsStateWithLifecycle()
+    val modelsByProvider by viewModel.modelsByProvider.collectAsStateWithLifecycle()
+    val refreshingIds by viewModel.refreshingProviderIds.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var pendingDelete by remember { mutableStateOf<ProviderConfig?>(null) }
 
@@ -140,8 +151,12 @@ fun ProvidersScreen(
                 items(configured, key = { "cfg_${it.id}" }) { provider ->
                     ConfiguredProviderCard(
                         provider = provider,
+                        models = modelsByProvider[provider.id].orEmpty(),
+                        isRefreshingModels = provider.id in refreshingIds,
                         onEdit = { onEditProvider(provider.id) },
                         onToggle = { enabled -> viewModel.toggleProviderEnabled(provider.id, enabled) },
+                        onRefreshModels = { viewModel.refreshModelsForProvider(provider.id) },
+                        onSelectModel = { modelId -> viewModel.selectProviderDefaultModel(provider.id, modelId) },
                         onDelete = { pendingDelete = provider },
                     )
                 }
@@ -259,13 +274,20 @@ private fun ProvidersHeroBanner() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ConfiguredProviderCard(
     provider: ProviderConfig,
+    models: List<AiModelInfo>,
+    isRefreshingModels: Boolean,
     onEdit: () -> Unit,
     onToggle: (Boolean) -> Unit,
+    onRefreshModels: () -> Unit,
+    onSelectModel: (String) -> Unit,
     onDelete: () -> Unit,
 ) {
+    var modelsExpanded by remember { mutableStateOf(false) }
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -324,18 +346,51 @@ private fun ConfiguredProviderCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = provider.resolvedProtocol.name.replace("_", "-").lowercase(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                    ) {
+                        Text(
+                            text = provider.resolvedProtocol.name.replace("_", "-").lowercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
+                    if (models.isNotEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.provider_models_section, models.size),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
                 }
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isRefreshingModels) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .padding(horizontal = 10.dp)
+                                .size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        IconButton(onClick = onRefreshModels) {
+                            Icon(
+                                imageVector = Icons.Outlined.Refresh,
+                                contentDescription = stringResource(R.string.provider_models_refresh),
+                            )
+                        }
+                    }
                     IconButton(onClick = onEdit) {
                         Icon(
                             imageVector = Icons.Outlined.Edit,
@@ -349,6 +404,73 @@ private fun ConfiguredProviderCard(
                             tint = MaterialTheme.colorScheme.error,
                         )
                     }
+                }
+            }
+
+            if (models.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                val visibleModels = if (modelsExpanded) models else models.take(6)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    visibleModels.forEach { model ->
+                        val isSelected = model.modelId == provider.selectedModelId
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { onSelectModel(model.modelId) },
+                            label = {
+                                Text(
+                                    text = model.displayName,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            leadingIcon = if (isSelected) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp),
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+                if (models.size > 6) {
+                    TextButton(
+                        onClick = { modelsExpanded = !modelsExpanded },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = if (modelsExpanded) {
+                                stringResource(R.string.provider_models_hide)
+                            } else {
+                                stringResource(R.string.provider_models_show_all, models.size)
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = if (modelsExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            } else if (provider.status == ProviderStatus.CONNECTED || provider.hasApiKey) {
+                Spacer(modifier = Modifier.height(4.dp))
+                TextButton(
+                    onClick = onRefreshModels,
+                    enabled = !isRefreshingModels,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.provider_fetch_models))
                 }
             }
         }

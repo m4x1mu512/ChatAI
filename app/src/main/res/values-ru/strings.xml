@@ -76,6 +76,10 @@
     <string name="provider_last_check">Последняя проверка: %1$s</string>
     <string name="provider_never_checked">Ещё не проверялось</string>
     <string name="provider_models_loaded_count">Загружено моделей: %1$d</string>
+    <string name="provider_models_section">Доступные модели (%1$d)</string>
+    <string name="provider_models_show_all">Показать все (%1$d)</string>
+    <string name="provider_models_hide">Свернуть модели</string>
+    <string name="provider_models_refresh">Обновить модели</string>
     <string name="provider_manual_model_title">Ввести ID модели вручную</string>
     <string name="provider_manual_model_hint">напр. gpt-4o, claude-sonnet-4-5, llama3.3</string>
     <string name="provider_manual_model_note">Автоматическая загрузка списка моделей недоступна. Введите ID модели вручную.</string>

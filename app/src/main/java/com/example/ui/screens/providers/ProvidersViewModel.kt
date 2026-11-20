@@ -3,6 +3,7 @@ package com.example.ui.screens.providers
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.core.error.AiError
+import com.example.core.error.ErrorParser
 import com.example.core.model.AiModelInfo
 import com.example.core.model.ApiProtocol
 import com.example.core.model.HeaderEntry
@@ -13,10 +14,12 @@ import com.example.data.local.SettingsDataStore
 import com.example.data.network.ConnectionCheckResult
 import com.example.data.repository.ProviderRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -62,10 +65,26 @@ class ProvidersViewModel @Inject constructor(
     val allModels: StateFlow<List<AiModelInfo>> = providerRepository.observeAllModels()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val modelsByProvider: StateFlow<Map<String, List<AiModelInfo>>> = allModels
+        .map { list -> list.groupBy { it.providerId } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    private val _refreshingProviderIds = MutableStateFlow<Set<String>>(emptySet())
+    val refreshingProviderIds: StateFlow<Set<String>> = _refreshingProviderIds.asStateFlow()
+
     private val _editorState = MutableStateFlow(ProviderEditorState())
     val editorState: StateFlow<ProviderEditorState> = _editorState.asStateFlow()
 
+    private var observeModelsJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            providerRepository.syncMissingModelsForConnectedProviders()
+        }
+    }
+
     fun startNewProvider(type: ProviderType) {
+        observeModelsJob?.cancel()
         _editorState.value = ProviderEditorState(
             id = UUID.randomUUID().toString(),
             isExisting = false,
@@ -77,7 +96,8 @@ class ProvidersViewModel @Inject constructor(
     }
 
     fun loadExistingProvider(providerId: String) {
-        viewModelScope.launch {
+        observeModelsJob?.cancel()
+        observeModelsJob = viewModelScope.launch {
             val config = providerRepository.getProvider(providerId) ?: return@launch
             val rawKey = providerRepository.getApiKey(providerId)
             _editorState.value = ProviderEditorState(
@@ -99,6 +119,11 @@ class ProvidersViewModel @Inject constructor(
                 lastCheckMessage = config.lastCheckMessage,
                 selectedModelId = config.selectedModelId,
             )
+            launch {
+                if (config.isEnabled && (config.status == ProviderStatus.CONNECTED || config.hasApiKey)) {
+                    providerRepository.syncMissingModelsForConnectedProviders()
+                }
+            }
             providerRepository.observeModelsForProvider(providerId).collect { models ->
                 _editorState.value = _editorState.value.copy(models = models)
             }
@@ -162,6 +187,13 @@ class ProvidersViewModel @Inject constructor(
         viewModelScope.launch {
             _editorState.value = state.copy(isTesting = true, checkError = null, checkResult = null)
             val result = providerRepository.testConnection(draftConfig, state.apiKeyInput)
+            val nextModels = if (result.success && result.models.isNotEmpty()) {
+                result.models
+            } else {
+                _editorState.value.models
+            }
+            val nextSelected = _editorState.value.selectedModelId
+                ?: nextModels.firstOrNull()?.modelId
             _editorState.value = _editorState.value.copy(
                 isTesting = false,
                 checkResult = result,
@@ -169,6 +201,9 @@ class ProvidersViewModel @Inject constructor(
                 status = if (result.success) ProviderStatus.CONNECTED else ProviderStatus.ERROR,
                 lastCheckedAt = System.currentTimeMillis(),
                 lastCheckMessage = result.message,
+                models = nextModels,
+                selectedModelId = nextSelected,
+                showManualModelPrompt = result.success && nextModels.isEmpty(),
             )
         }
     }
@@ -195,6 +230,7 @@ class ProvidersViewModel @Inject constructor(
                         status = ProviderStatus.CONNECTED,
                         lastCheckedAt = System.currentTimeMillis(),
                         lastCheckMessage = "Models synced (${models.size})",
+                        selectedModelId = saved.selectedModelId ?: models.firstOrNull()?.modelId,
                         showManualModelPrompt = models.isEmpty(),
                     )
                     onSaved()
@@ -236,21 +272,53 @@ class ProvidersViewModel @Inject constructor(
                         status = ProviderStatus.CONNECTED,
                         lastCheckedAt = System.currentTimeMillis(),
                         lastCheckMessage = "Models synced (${models.size})",
+                        selectedModelId = saved.selectedModelId ?: models.firstOrNull()?.modelId,
                         showManualModelPrompt = models.isEmpty(),
                     )
                 },
                 onFailure = { t ->
                     val refreshed = providerRepository.getProvider(saved.id)
+                    val parsedErr = ErrorParser.fromThrowable(
+                        t,
+                        providerName = saved.displayName,
+                        endpointUrl = saved.baseUrl,
+                        activeApiKey = state.apiKeyInput,
+                    )
                     _editorState.value = _editorState.value.copy(
                         isFetchingModels = false,
                         isExisting = true,
                         status = refreshed?.status ?: ProviderStatus.ERROR,
                         lastCheckedAt = System.currentTimeMillis(),
-                        lastCheckMessage = t.message.orEmpty(),
+                        lastCheckMessage = parsedErr.providerMessage,
+                        checkError = parsedErr,
                         showManualModelPrompt = true,
                     )
                 },
             )
+        }
+    }
+
+    fun selectDefaultModel(modelId: String) {
+        val state = _editorState.value
+        _editorState.value = state.copy(selectedModelId = modelId)
+        if (state.isExisting) {
+            viewModelScope.launch {
+                providerRepository.setSelectedModel(state.id, modelId)
+            }
+        }
+    }
+
+    fun selectProviderDefaultModel(providerId: String, modelId: String) {
+        viewModelScope.launch {
+            providerRepository.setSelectedModel(providerId, modelId)
+        }
+    }
+
+    fun refreshModelsForProvider(providerId: String) {
+        viewModelScope.launch {
+            _refreshingProviderIds.value = _refreshingProviderIds.value + providerId
+            providerRepository.fetchAndStoreModels(providerId)
+            _refreshingProviderIds.value = _refreshingProviderIds.value - providerId
         }
     }
 
