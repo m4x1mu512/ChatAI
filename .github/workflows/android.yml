@@ -2,10 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [ main, master ]
-    tags: [ 'v*' ]
   pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
@@ -47,13 +44,24 @@ jobs:
       - name: Build Debug APK
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Warn if release signing secrets are incomplete
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && (secrets.ANDROID_KEYSTORE_PASSWORD == '' || secrets.ANDROID_KEY_PASSWORD == '') }}
+      - name: Check release signing secrets
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "::warning::ANDROID_KEYSTORE_BASE64 is set, but ANDROID_KEYSTORE_PASSWORD or ANDROID_KEY_PASSWORD is missing. Skipping release signing."
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            if [ -n "$KEYSTORE_B64" ]; then
+              echo "::warning::ANDROID_KEYSTORE_BASE64 is set, but ANDROID_KEYSTORE_PASSWORD or ANDROID_KEY_PASSWORD is missing. Skipping release signing."
+            fi
+          fi
 
       - name: Decode Release Keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+        if: steps.signing.outputs.enabled == 'true'
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -71,7 +79,7 @@ jobs:
           echo "KEYSTORE_PATH=$TEMP_KEYSTORE" >> "$GITHUB_ENV"
 
       - name: Build Release APK & AAB
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+        if: steps.signing.outputs.enabled == 'true'
         env:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -92,7 +100,7 @@ jobs:
           if-no-files-found: error
 
       - name: Create GitHub Release
-        if: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+        if: startsWith(github.ref, 'refs/tags/v') && steps.signing.outputs.enabled == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: |
