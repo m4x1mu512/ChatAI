@@ -118,9 +118,11 @@ class ChatViewModel @Inject constructor(
         val enabledProviders = providers.filter { it.isEnabled }
         val activeProv = enabledProviders.firstOrNull { it.id == chat?.providerId }
             ?: enabledProviders.firstOrNull { it.status == ProviderStatus.CONNECTED }
+            ?: enabledProviders.firstOrNull { it.hasApiKey || !it.type.requiresApiKey }
             ?: enabledProviders.firstOrNull()
 
-        val activeModel = chat?.modelId?.takeIf { !it.isNullOrBlank() }
+        val chatModelMatchesProvider = chat?.providerId == null || chat.providerId == activeProv?.id
+        val activeModel = chat?.modelId?.takeIf { !it.isNullOrBlank() && chatModelMatchesProvider }
             ?: activeProv?.selectedModelId
             ?: models.firstOrNull { it.providerId == activeProv?.id }?.modelId
 

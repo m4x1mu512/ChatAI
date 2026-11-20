@@ -91,6 +91,7 @@
     <!-- Models -->
     <string name="models_picker_title">Select Model</string>
     <string name="models_search_hint">Search models by name or ID…</string>
+    <string name="models_filter_all">All</string>
     <string name="models_empty">No models available. Connect a provider or add a manual model ID.</string>
     <string name="badge_chat">Chat</string>
     <string name="badge_vision">Vision</string>
@@ -123,6 +124,7 @@
 
     <!-- Chat Conversation -->
     <string name="chat_select_model">Select Model</string>
+    <string name="chat_switch_model">Change Model</string>
     <string name="chat_input_hint">Message AI…</string>
     <string name="chat_send">Send</string>
     <string name="chat_stop">Stop</string>

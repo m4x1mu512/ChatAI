@@ -17,14 +17,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -64,19 +68,37 @@ fun ModelPickerSheet(
     onSelectModel: (ProviderConfig, AiModelInfo) -> Unit,
     onAddManualModel: (providerId: String, modelId: String) -> Unit,
     onRefreshModels: ((providerId: String) -> Unit)? = null,
+    onOpenProviders: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var searchQuery by remember { mutableStateOf("") }
+    var filterProviderId by remember { mutableStateOf<String?>(null) }
     var manualDialogProvider by remember { mutableStateOf<ProviderConfig?>(null) }
     var manualModelText by remember { mutableStateOf("") }
 
-    val enabledProviders = remember(providers) {
-        providers.filter { it.isEnabled && (it.status == ProviderStatus.CONNECTED || it.hasApiKey || !it.type.requiresApiKey) }
+    val enabledProviders = remember(providers, models) {
+        providers.filter { provider ->
+            provider.isEnabled && (
+                provider.status == ProviderStatus.CONNECTED ||
+                    provider.hasApiKey ||
+                    !provider.type.requiresApiKey ||
+                    models.any { it.providerId == provider.id }
+                )
+        }.ifEmpty {
+            providers.filter { it.isEnabled }
+        }
     }
-    val modelsByProvider = remember(models, searchQuery, enabledProviders) {
+    val visibleProviders = remember(enabledProviders, filterProviderId) {
+        if (filterProviderId == null) {
+            enabledProviders
+        } else {
+            enabledProviders.filter { it.id == filterProviderId }.ifEmpty { enabledProviders }
+        }
+    }
+    val modelsByProvider = remember(models, searchQuery, visibleProviders) {
         val q = searchQuery.trim().lowercase()
-        enabledProviders.associateWith { provider ->
+        visibleProviders.associateWith { provider ->
             models.filter { it.providerId == provider.id }
                 .filter {
                     q.isEmpty() ||
@@ -94,7 +116,7 @@ fun ModelPickerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 580.dp)
+                .heightIn(max = 600.dp)
                 .padding(horizontal = 16.dp),
         ) {
             Text(
@@ -113,15 +135,65 @@ fun ModelPickerSheet(
                     .fillMaxWidth()
                     .testTag("model_search_input"),
             )
+            if (enabledProviders.size > 1) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = filterProviderId == null,
+                        onClick = { filterProviderId = null },
+                        label = { Text(stringResource(R.string.models_filter_all)) },
+                    )
+                    enabledProviders.forEach { provider ->
+                        val count = models.count { it.providerId == provider.id }
+                        FilterChip(
+                            selected = filterProviderId == provider.id,
+                            onClick = {
+                                filterProviderId = if (filterProviderId == provider.id) null else provider.id
+                            },
+                            leadingIcon = {
+                                ProviderLogoBadge(providerType = provider.type, size = 16.dp)
+                            },
+                            label = {
+                                Text(
+                                    text = "${provider.displayName} ($count)",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(10.dp))
 
             if (enabledProviders.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.models_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 24.dp),
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.models_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (onOpenProviders != null) {
+                        Button(
+                            onClick = {
+                                onDismiss()
+                                onOpenProviders()
+                            },
+                        ) {
+                            Text(stringResource(R.string.providers_onboarding_title))
+                        }
+                    }
+                }
             } else {
                 LazyColumn(
                     contentPadding = PaddingValues(bottom = 28.dp),

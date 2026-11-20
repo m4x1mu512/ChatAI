@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -58,6 +60,7 @@ import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,6 +68,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -258,39 +262,69 @@ fun ChatScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier
-                                .padding(top = 2.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    viewModel.syncConnectedProviderModels()
-                                    showModelPicker = true
-                                }
-                                .testTag("model_selector_pill"),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                state.activeProvider?.let {
-                                    ProviderLogoBadge(providerType = it.type, size = 16.dp)
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                }
-                                Text(
-                                    text = state.activeModelId ?: stringResource(R.string.chat_select_model),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Icon(
-                                    imageVector = Icons.Outlined.ExpandMore,
-                                    contentDescription = stringResource(R.string.chat_select_model),
-                                    modifier = Modifier.size(14.dp),
-                                )
+                        state.activeProvider?.let { provider ->
+                            Text(
+                                text = provider.displayName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    val isUnselected = state.activeModelId.isNullOrBlank()
+                    val pillContentColor = if (isUnselected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = if (isUnselected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        },
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                        ),
+                        modifier = Modifier
+                            .padding(end = 10.dp)
+                            .heightIn(min = 40.dp)
+                            .widthIn(max = 190.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .clickable {
+                                viewModel.syncConnectedProviderModels()
+                                showModelPicker = true
                             }
+                            .testTag("model_selector_pill"),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            state.activeProvider?.let {
+                                ProviderLogoBadge(providerType = it.type, size = 18.dp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = state.activeModelId ?: stringResource(R.string.chat_select_model),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = pillContentColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = Icons.Outlined.ExpandMore,
+                                contentDescription = stringResource(R.string.chat_select_model),
+                                tint = pillContentColor,
+                                modifier = Modifier.size(18.dp),
+                            )
                         }
                     }
                 },
@@ -404,6 +438,63 @@ fun ChatScreen(
                             IconButton(onClick = viewModel::cancelEditMessage, modifier = Modifier.size(28.dp)) {
                                 Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.cd_close), modifier = Modifier.size(16.dp))
                             }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (state.activeModelId.isNullOrBlank()) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                        },
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                viewModel.syncConnectedProviderModels()
+                                showModelPicker = true
+                            }
+                            .testTag("composer_model_selector"),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            state.activeProvider?.let {
+                                ProviderLogoBadge(providerType = it.type, size = 16.dp)
+                            } ?: Icon(
+                                imageVector = Icons.Outlined.Tune,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = buildString {
+                                    state.activeProvider?.let {
+                                        append(it.displayName)
+                                        append(" • ")
+                                    }
+                                    append(state.activeModelId ?: stringResource(R.string.chat_select_model))
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 260.dp),
+                            )
+                            Icon(
+                                imageVector = Icons.Outlined.ExpandMore,
+                                contentDescription = stringResource(R.string.chat_switch_model),
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 }
@@ -559,6 +650,32 @@ fun ChatScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        FilledTonalButton(
+                            onClick = {
+                                viewModel.syncConnectedProviderModels()
+                                showModelPicker = true
+                            },
+                            modifier = Modifier.testTag("empty_chat_select_model_button"),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Tune,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = state.activeModelId ?: stringResource(R.string.chat_select_model),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Outlined.ExpandMore,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                 }
             } else {
@@ -631,6 +748,7 @@ fun ChatScreen(
             onSelectModel = viewModel::selectModel,
             onAddManualModel = viewModel::addManualModel,
             onRefreshModels = viewModel::refreshProviderModels,
+            onOpenProviders = onOpenProviders,
             onDismiss = { showModelPicker = false },
         )
     }

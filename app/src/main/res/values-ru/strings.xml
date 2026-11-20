@@ -91,6 +91,7 @@
     <!-- Models -->
     <string name="models_picker_title">Выбор модели</string>
     <string name="models_search_hint">Поиск модели по названию или ID…</string>
+    <string name="models_filter_all">Все</string>
     <string name="models_empty">Нет доступных моделей. Подключите провайдера или добавьте модель вручную.</string>
     <string name="badge_chat">Chat</string>
     <string name="badge_vision">Vision</string>
@@ -123,6 +124,7 @@
 
     <!-- Chat Conversation -->
     <string name="chat_select_model">Выбрать модель</string>
+    <string name="chat_switch_model">Сменить модель</string>
     <string name="chat_input_hint">Сообщение AI…</string>
     <string name="chat_send">Отправить</string>
     <string name="chat_stop">Остановить</string>
