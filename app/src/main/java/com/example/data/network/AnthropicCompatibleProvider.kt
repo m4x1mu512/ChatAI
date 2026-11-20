@@ -98,7 +98,10 @@ class AnthropicCompatibleProvider @Inject constructor(
             runCatching {
                 val base = validateBaseUrl(config.baseUrl, config.displayName, apiKey)
                 val url = if (base.endsWith("/v1")) "$base/models" else "$base/v1/models"
-                val request = buildBaseRequest(url, config, apiKey).get().build()
+                val request = buildBaseRequest(url, config, apiKey)
+                    .header("Accept", "application/json")
+                    .get()
+                    .build()
                 okHttpClient.newCall(request).execute().use { response ->
                     val bodyStr = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
@@ -435,6 +438,7 @@ class AnthropicCompatibleProvider @Inject constructor(
 
     private fun buildBaseRequest(url: String, config: ProviderConfig, apiKey: String): Request.Builder {
         val builder = Request.Builder().url(url)
+            .header("User-Agent", "AIChat-Android/1.0")
             .header("anthropic-version", ANTHROPIC_VERSION)
         if (apiKey.isNotBlank()) {
             builder.header("x-api-key", apiKey)

@@ -68,4 +68,22 @@ class AiChatUnitTest {
         val videoCaps = CapabilityInferencer.inferCapabilities("sora-1")
         assertTrue(ModelCapability.VIDEO in videoCaps)
     }
+
+    @Test
+    fun `coarena uses official coarena ai api v1 base url`() {
+        assertEquals("https://coarena.ai/api/v1", ProviderType.COARENA.defaultBaseUrl)
+    }
+
+    @Test
+    fun `error parser detects cloudflare html 403 challenge`() {
+        val err = ErrorParser.fromHttpResponse(
+            statusCode = 403,
+            body = "<!DOCTYPE html><html><head><title>Just a moment...</title></head><body>cf_chl_opt</body></html>",
+            providerName = "Coarena",
+            modelId = "",
+            endpointUrl = "https://api.coarena.com/v1/models",
+        )
+        assertEquals(AiErrorCategory.INVALID_BASE_URL, err.category)
+        assertEquals("WAF_CHALLENGE_HTTP_403", err.errorCode)
+    }
 }

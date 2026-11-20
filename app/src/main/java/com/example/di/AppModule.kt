@@ -2,6 +2,8 @@ package com.example.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.local.AppDatabase
 import com.example.data.local.AttachmentDao
 import com.example.data.local.ChatDao
@@ -28,6 +30,15 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "ai_chat_database.db",
+        ).addCallback(
+            object : RoomDatabase.Callback() {
+                override fun onOpen(db: SupportSQLiteDatabase) {
+                    super.onOpen(db)
+                    db.execSQL(
+                        "UPDATE providers SET baseUrl = 'https://coarena.ai/api/v1' WHERE type = 'COARENA' AND baseUrl IN ('https://api.coarena.com/v1', 'https://api.coarena.com', 'https://api.coarena.com/')",
+                    )
+                }
+            },
         ).build()
     }
 

@@ -154,7 +154,10 @@ class OpenAiCompatibleProvider @Inject constructor(
             runCatching {
                 val base = validateBaseUrl(config.baseUrl, config.displayName, apiKey)
                 val url = "$base/models"
-                val request = buildBaseRequest(url, config, apiKey).get().build()
+                val request = buildBaseRequest(url, config, apiKey)
+                    .header("Accept", "application/json")
+                    .get()
+                    .build()
                 okHttpClient.newCall(request).execute().use { response ->
                     val bodyStr = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
@@ -185,9 +188,12 @@ class OpenAiCompatibleProvider @Inject constructor(
         return array.mapNotNull { element ->
             val obj = element.jsonObject
             val id = obj["id"]?.jsonPrimitive?.contentOrNull
+                ?: obj["model"]?.jsonPrimitive?.contentOrNull
                 ?: obj["name"]?.jsonPrimitive?.contentOrNull
                 ?: return@mapNotNull null
-            val display = obj["display_name"]?.jsonPrimitive?.contentOrNull ?: id
+            val display = obj["display_name"]?.jsonPrimitive?.contentOrNull
+                ?: obj["name"]?.jsonPrimitive?.contentOrNull
+                ?: id
             val ownedBy = obj["owned_by"]?.jsonPrimitive?.contentOrNull.orEmpty()
             val ctx = obj["context_length"]?.jsonPrimitive?.intOrNull
                 ?: obj["context_window"]?.jsonPrimitive?.intOrNull
@@ -578,6 +584,7 @@ class OpenAiCompatibleProvider @Inject constructor(
 
     private fun buildBaseRequest(url: String, config: ProviderConfig, apiKey: String): Request.Builder {
         val builder = Request.Builder().url(url)
+            .header("User-Agent", "AIChat-Android/1.0")
         if (apiKey.isNotBlank()) {
             builder.header("Authorization", "Bearer $apiKey")
         }

@@ -41,7 +41,7 @@ enum class ProviderType(
 ) {
     COARENA(
         defaultDisplayName = "Coarena",
-        defaultBaseUrl = "https://api.coarena.com/v1",
+        defaultBaseUrl = "https://coarena.ai/api/v1",
         defaultProtocol = ApiProtocol.OPENAI_COMPATIBLE,
         supportsOrgAndProject = false,
         requiresApiKey = true,

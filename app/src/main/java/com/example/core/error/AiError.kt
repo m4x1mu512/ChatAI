@@ -115,8 +115,20 @@ object ErrorParser {
             }
         }
 
+        val isHtmlChallenge = body.trimStart().startsWith("<!doctype", ignoreCase = true) ||
+            body.trimStart().startsWith("<html", ignoreCase = true) ||
+            body.contains("cf_chl_opt") ||
+            body.contains("Just a moment...", ignoreCase = true)
+
+        if (isHtmlChallenge && parsedMessage.isBlank()) {
+            parsedCode = "WAF_CHALLENGE_HTTP_$statusCode"
+            parsedMessage = "HTTP $statusCode: Blocked by Cloudflare/WAF or wrong Base URL"
+        }
+
         val messageLower = "$parsedCode $parsedMessage $cleanBody".lowercase()
         val category = when {
+            isHtmlChallenge && (statusCode == 403 || statusCode == 503) ->
+                AiErrorCategory.INVALID_BASE_URL
             statusCode == 401 && (messageLower.contains("expired") || messageLower.contains("revoked")) ->
                 AiErrorCategory.EXPIRED_OR_REVOKED_KEY
             statusCode == 401 || messageLower.contains("invalid_api_key") || messageLower.contains("incorrect api key") ->
@@ -140,6 +152,7 @@ object ErrorParser {
                 AiErrorCategory.UNSUPPORTED_ATTACHMENT
             statusCode == 408 || statusCode == 504 -> AiErrorCategory.TIMEOUT
             statusCode in 500..599 -> AiErrorCategory.SERVER_ERROR
+            statusCode == 403 && messageLower.contains("terms") -> AiErrorCategory.UNKNOWN
             statusCode == 403 -> AiErrorCategory.INVALID_API_KEY
             else -> AiErrorCategory.UNKNOWN
         }
