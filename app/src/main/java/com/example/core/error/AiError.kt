@@ -4,6 +4,10 @@ import android.content.Context
 import com.example.R
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
@@ -102,16 +106,25 @@ object ErrorParser {
         var parsedMessage = ""
 
         runCatching {
-            val root = json.parseToJsonElement(body).jsonObject
-            val errorObj = root["error"]?.jsonObject
-            if (errorObj != null) {
-                parsedCode = errorObj["code"]?.jsonPrimitive?.content
-                    ?: errorObj["type"]?.jsonPrimitive?.content.orEmpty()
-                parsedMessage = errorObj["message"]?.jsonPrimitive?.content.orEmpty()
-            } else {
-                parsedMessage = root["message"]?.jsonPrimitive?.content
-                    ?: root["detail"]?.jsonPrimitive?.content.orEmpty()
-                parsedCode = root["code"]?.jsonPrimitive?.content.orEmpty()
+            val root = json.parseToJsonElement(body) as? JsonObject ?: return@runCatching
+            val errorObj = root["error"] as? JsonObject
+            val errorsArr = root["errors"] as? JsonArray
+            val firstArrayErr = errorsArr?.firstOrNull() as? JsonObject
+            when {
+                errorObj != null -> {
+                    parsedCode = (errorObj["code"] as? JsonPrimitive)?.contentOrNull
+                        ?: (errorObj["type"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                    parsedMessage = (errorObj["message"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                }
+                firstArrayErr != null -> {
+                    parsedCode = (firstArrayErr["code"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                    parsedMessage = (firstArrayErr["message"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                }
+                else -> {
+                    parsedMessage = (root["message"] as? JsonPrimitive)?.contentOrNull
+                        ?: (root["detail"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                    parsedCode = (root["code"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                }
             }
         }
 
@@ -128,6 +141,9 @@ object ErrorParser {
         val messageLower = "$parsedCode $parsedMessage $cleanBody".lowercase()
         val category = when {
             isHtmlChallenge && (statusCode == 403 || statusCode == 503) ->
+                AiErrorCategory.INVALID_BASE_URL
+            cleanEndpoint.contains("your_account_id", ignoreCase = true) ||
+                messageLower.contains("invalid account identifier") ->
                 AiErrorCategory.INVALID_BASE_URL
             statusCode == 401 && (messageLower.contains("expired") || messageLower.contains("revoked")) ->
                 AiErrorCategory.EXPIRED_OR_REVOKED_KEY

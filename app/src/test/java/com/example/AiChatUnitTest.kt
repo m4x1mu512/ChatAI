@@ -3,8 +3,10 @@ package com.example
 import com.example.core.error.AiErrorCategory
 import com.example.core.error.ErrorFormatter
 import com.example.core.error.ErrorParser
+import com.example.core.model.ApiProtocol
 import com.example.core.model.CapabilityInferencer
 import com.example.core.model.ModelCapability
+import com.example.core.model.ProviderConfig
 import com.example.core.model.ProviderType
 import com.example.core.util.UrlDetector
 import com.example.data.network.OpenAiCompatibleProvider
@@ -122,5 +124,64 @@ class AiChatUnitTest {
         val nestedJson = """{"data":{"models":["llama-3.3-70b","qwen-2.5-72b"]}}"""
         val nestedParsed = OpenAiCompatibleProvider.parseModelsJson("custom-1", nestedJson)
         assertEquals(listOf("llama-3.3-70b", "qwen-2.5-72b"), nestedParsed.map { it.modelId })
+    }
+
+    @Test
+    fun `cloudflare resolves models search endpoint and parses cloudflare catalog`() {
+        val cfConfig = ProviderConfig(
+            id = "cf-1",
+            type = ProviderType.CLOUDFLARE,
+            displayName = "Cloudflare AI",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/ai/v1",
+        )
+        assertEquals(
+            "https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/ai/models/search?per_page=100",
+            OpenAiCompatibleProvider.resolveModelsEndpointUrl(cfConfig, cfConfig.baseUrl),
+        )
+
+        val cfCatalogJson = """
+            {
+              "result": [
+                {
+                  "id": "f2bc3f7a-0000-0000-0000-000000000001",
+                  "name": "@cf/meta/llama-3.1-8b-instruct",
+                  "task": {"id": "t1", "name": "Text Generation"}
+                },
+                {
+                  "id": "f2bc3f7a-0000-0000-0000-000000000002",
+                  "name": "@cf/black-forest-labs/flux-1-schnell",
+                  "task": {"id": "t2", "name": "Text-to-Image"}
+                },
+                {
+                  "id": "f2bc3f7a-0000-0000-0000-000000000003",
+                  "name": "@cf/baai/bge-base-en-v1.5",
+                  "task": {"id": "t3", "name": "Text Embeddings"}
+                }
+              ],
+              "success": true,
+              "errors": []
+            }
+        """.trimIndent()
+        val parsed = OpenAiCompatibleProvider.parseModelsJson("cf-1", cfCatalogJson)
+        assertEquals(2, parsed.size)
+        assertEquals("@cf/black-forest-labs/flux-1-schnell", parsed[0].modelId)
+        assertTrue(ModelCapability.IMAGE in parsed[0].capabilities)
+        assertEquals("@cf/meta/llama-3.1-8b-instruct", parsed[1].modelId)
+        assertTrue(ModelCapability.CHAT in parsed[1].capabilities)
+    }
+
+    @Test
+    fun `error parser parses cloudflare errors array and placeholder account id`() {
+        val err = ErrorParser.fromHttpResponse(
+            statusCode = 405,
+            body = """{"result":null,"success":false,"errors":[{"code":7001,"message":"GET not supported for requested URI."}],"messages":[]}""",
+            providerName = "Cloudflare AI",
+            modelId = "",
+            endpointUrl = "https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT_ID/ai/v1/models",
+        )
+        assertEquals("7001", err.errorCode)
+        assertEquals("GET not supported for requested URI.", err.providerMessage)
+        assertEquals(AiErrorCategory.INVALID_BASE_URL, err.category)
     }
 }

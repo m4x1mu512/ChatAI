@@ -61,6 +61,9 @@
     <string name="protocol_hint_anthropic">Anthropic-compatible — выбирайте для Anthropic/Claude, если приложение или SDK ожидает Anthropic Messages API.</string>
     <string name="protocol_hint_tip">Если не уверены, начните с OpenAI-compatible: он обычно проще для мобильных чат-приложений.</string>
     <string name="provider_field_base_url">Base URL</string>
+    <string name="provider_field_cloudflare_account_id">Cloudflare Account ID</string>
+    <string name="provider_cloudflare_account_hint">32-символьный ID из панели Cloudflare (автоматически подставится в Base URL)</string>
+    <string name="provider_cloudflare_url_warning">Замените YOUR_ACCOUNT_ID в Base URL или введите Account ID в поле ниже.</string>
     <string name="provider_field_api_key">API key</string>
     <string name="provider_api_key_hint">Шифруется через Android Keystore</string>
     <string name="provider_show_key">Показать API-ключ</string>

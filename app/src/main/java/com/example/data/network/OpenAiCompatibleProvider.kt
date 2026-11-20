@@ -12,6 +12,7 @@ import com.example.core.model.GeneratedMedia
 import com.example.core.model.GeneratedMediaType
 import com.example.core.model.MessageRole
 import com.example.core.model.ProviderConfig
+import com.example.core.model.ProviderType
 import com.example.core.util.AttachmentExtractor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -60,17 +61,22 @@ class OpenAiCompatibleProvider @Inject constructor(
     override suspend fun testConnection(config: ProviderConfig, apiKey: String): ConnectionCheckResult =
         withContext(Dispatchers.IO) {
             val base = normalizeBaseUrl(config.baseUrl)
-            if (base.isBlank()) {
+            if (base.isBlank() || base.contains("YOUR_ACCOUNT_ID", ignoreCase = true)) {
+                val msg = if (base.contains("YOUR_ACCOUNT_ID", ignoreCase = true)) {
+                    "Replace YOUR_ACCOUNT_ID in Base URL with your Cloudflare Account ID"
+                } else {
+                    "Invalid Base URL"
+                }
                 return@withContext ConnectionCheckResult(
                     success = false,
                     resolvedProtocol = protocol,
-                    message = "Invalid Base URL",
+                    message = msg,
                     error = ErrorParser.fromThrowable(
-                        IllegalArgumentException("Invalid Base URL"),
+                        IllegalArgumentException(msg),
                         config.displayName,
                         endpointUrl = config.baseUrl,
                         activeApiKey = apiKey,
-                    ),
+                    ).copy(category = AiErrorCategory.INVALID_BASE_URL),
                 )
             }
             val modelsResult = fetchModels(config, apiKey)
@@ -88,11 +94,14 @@ class OpenAiCompatibleProvider @Inject constructor(
                     val aiError = ErrorParser.fromThrowable(
                         throwable,
                         providerName = config.displayName,
-                        endpointUrl = "$base/models",
+                        endpointUrl = resolveModelsEndpointUrl(config, base),
                         activeApiKey = apiKey,
                     )
-                    // Some endpoints (e.g. Perplexity) may not support GET /models -> probe minimal chat if 404/405
-                    if (aiError.httpStatus == 404 || aiError.httpStatus == 405) {
+                    // Some endpoints (e.g. Perplexity, or Cloudflare tokens without Read scope) may fail /models -> probe chat
+                    val shouldProbeChat = aiError.httpStatus == 404 ||
+                        aiError.httpStatus == 405 ||
+                        (config.type == ProviderType.CLOUDFLARE && aiError.httpStatus == 403)
+                    if (shouldProbeChat) {
                         probeChatEndpoint(config, base, apiKey)
                     } else {
                         ConnectionCheckResult(
@@ -156,36 +165,82 @@ class OpenAiCompatibleProvider @Inject constructor(
         withContext(Dispatchers.IO) {
             runCatching {
                 val base = validateBaseUrl(config.baseUrl, config.displayName, apiKey)
-                val url = "$base/models"
-                val request = buildBaseRequest(url, config, apiKey)
-                    .header("Accept", "application/json")
-                    .get()
-                    .build()
-                okHttpClient.newCall(request).execute().use { response ->
-                    val bodyStr = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        throw AiException(
-                            ErrorParser.fromHttpResponse(
-                                statusCode = response.code,
-                                body = bodyStr,
-                                providerName = config.displayName,
-                                modelId = "",
-                                endpointUrl = url,
-                                requestId = response.header("x-request-id").orEmpty(),
-                                activeApiKey = apiKey,
-                            ),
-                        )
-                    }
-                    parseModelsResponse(config.id, bodyStr)
-                }
+                val primaryUrl = resolveModelsEndpointUrl(config, base)
+                val bodyStr = runCatching { executeModelsGet(primaryUrl, config, apiKey) }
+                    .recoverCatching { throwable ->
+                        val err = (throwable as? AiException)?.aiError
+                        val fallbackUrl = cloudflareFallbackUrl(base)
+                        if ((err?.httpStatus == 404 || err?.httpStatus == 405) &&
+                            fallbackUrl != null &&
+                            fallbackUrl != primaryUrl
+                        ) {
+                            executeModelsGet(fallbackUrl, config, apiKey)
+                        } else {
+                            throw throwable
+                        }
+                    }.getOrThrow()
+                parseModelsResponse(config.id, bodyStr)
             }
         }
+
+    private fun executeModelsGet(url: String, config: ProviderConfig, apiKey: String): String {
+        val request = buildBaseRequest(url, config, apiKey)
+            .header("Accept", "application/json")
+            .get()
+            .build()
+        okHttpClient.newCall(request).execute().use { response ->
+            val bodyStr = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw AiException(
+                    ErrorParser.fromHttpResponse(
+                        statusCode = response.code,
+                        body = bodyStr,
+                        providerName = config.displayName,
+                        modelId = "",
+                        endpointUrl = url,
+                        requestId = response.header("x-request-id").orEmpty(),
+                        activeApiKey = apiKey,
+                    ),
+                )
+            }
+            return bodyStr
+        }
+    }
 
     internal fun parseModelsResponse(providerId: String, bodyStr: String): List<AiModelInfo> =
         parseModelsJson(providerId, bodyStr)
 
     companion object {
         private val modelsJsonParser = Json { ignoreUnknownKeys = true }
+        private val CLOUDFLARE_AI_V1_REGEX = Regex("""(?i)^(https?://api\.cloudflare\.com/client/v4/accounts/[^/]+/ai)/v1$""")
+
+        internal fun resolveModelsEndpointUrl(config: ProviderConfig, normalizedBase: String): String {
+            val cfMatch = CLOUDFLARE_AI_V1_REGEX.matchEntire(normalizedBase)
+            if (cfMatch != null) {
+                return "${cfMatch.groupValues[1]}/models/search?per_page=100"
+            }
+            if (config.type == ProviderType.CLOUDFLARE && normalizedBase.endsWith("/ai/v1", ignoreCase = true)) {
+                return "${normalizedBase.dropLast(3)}/models/search?per_page=100"
+            }
+            return "$normalizedBase/models"
+        }
+
+        internal fun cloudflareFallbackUrl(normalizedBase: String): String? {
+            if (normalizedBase.endsWith("/ai/v1", ignoreCase = true)) {
+                return "${normalizedBase.dropLast(3)}/models/search?per_page=100"
+            }
+            return null
+        }
+
+        private val nonChatCloudflareTasks = setOf(
+            "text embeddings",
+            "text classification",
+            "automatic speech recognition",
+            "object detection",
+            "image classification",
+            "sentence similarity",
+            "text-to-speech",
+        )
 
         internal fun parseModelsJson(providerId: String, bodyStr: String): List<AiModelInfo> {
             val root = runCatching { modelsJsonParser.parseToJsonElement(bodyStr) }.getOrNull() ?: return emptyList()
@@ -197,6 +252,7 @@ class OpenAiCompatibleProvider @Inject constructor(
                         dataField is JsonArray -> dataField
                         dataField is JsonObject && dataField["models"] is JsonArray -> dataField["models"] as JsonArray
                         dataField is JsonObject && dataField["items"] is JsonArray -> dataField["items"] as JsonArray
+                        root["result"] is JsonArray -> root["result"] as JsonArray
                         root["models"] is JsonArray -> root["models"] as JsonArray
                         root["results"] is JsonArray -> root["results"] as JsonArray
                         root["items"] is JsonArray -> root["items"] as JsonArray
@@ -220,22 +276,46 @@ class OpenAiCompatibleProvider @Inject constructor(
                         )
                     }
                     is JsonObject -> {
-                        val id = (element["id"] as? JsonPrimitive)?.contentOrNull
-                            ?: (element["model"] as? JsonPrimitive)?.contentOrNull
-                            ?: (element["name"] as? JsonPrimitive)?.contentOrNull
-                            ?: (element["slug"] as? JsonPrimitive)?.contentOrNull
-                            ?: return@mapNotNull null
+                        val rawName = (element["name"] as? JsonPrimitive)?.contentOrNull?.trim()
+                        val rawId = (element["id"] as? JsonPrimitive)?.contentOrNull?.trim()
+                        val taskName = ((element["task"] as? JsonObject)?.get("name") as? JsonPrimitive)
+                            ?.contentOrNull?.trim().orEmpty()
+                        val isCloudflareSchema = (element["task"] is JsonObject) ||
+                            (rawName != null && (rawName.startsWith("@cf/") || rawName.startsWith("@hf/")))
+
+                        if (isCloudflareSchema && taskName.lowercase() in nonChatCloudflareTasks) {
+                            return@mapNotNull null
+                        }
+
+                        val id = if (isCloudflareSchema && !rawName.isNullOrBlank()) {
+                            rawName
+                        } else {
+                            rawId
+                                ?: (element["model"] as? JsonPrimitive)?.contentOrNull
+                                ?: rawName
+                                ?: (element["slug"] as? JsonPrimitive)?.contentOrNull
+                                ?: return@mapNotNull null
+                        }
                         val display = (element["display_name"] as? JsonPrimitive)?.contentOrNull
                             ?: (element["displayName"] as? JsonPrimitive)?.contentOrNull
-                            ?: (element["name"] as? JsonPrimitive)?.contentOrNull
+                            ?: rawName
                             ?: id
                         val ownedBy = (element["owned_by"] as? JsonPrimitive)?.contentOrNull
                             ?: (element["provider"] as? JsonPrimitive)?.contentOrNull
-                            ?: ""
+                            ?: if (isCloudflareSchema) "cloudflare" else ""
                         val ctx = (element["context_length"] as? JsonPrimitive)?.intOrNull
                             ?: (element["context_window"] as? JsonPrimitive)?.intOrNull
                             ?: (element["max_context_length"] as? JsonPrimitive)?.intOrNull
-                        val caps = CapabilityInferencer.inferCapabilities(id, display)
+                        val explicitCaps = buildSet {
+                            val taskLower = taskName.lowercase()
+                            if (taskLower.contains("text-to-image") || taskLower.contains("image generation")) {
+                                add("image")
+                            }
+                            if (taskLower.contains("image-to-text") || taskLower.contains("visual")) {
+                                add("vision")
+                            }
+                        }
+                        val caps = CapabilityInferencer.inferCapabilities(id, display, explicitCaps)
                         AiModelInfo(
                             providerId = providerId,
                             modelId = id,
@@ -652,10 +732,15 @@ class OpenAiCompatibleProvider @Inject constructor(
 
     private fun validateBaseUrl(raw: String, providerName: String, apiKey: String): String {
         val normalized = normalizeBaseUrl(raw)
-        if (normalized.isBlank()) {
+        if (normalized.isBlank() || normalized.contains("YOUR_ACCOUNT_ID", ignoreCase = true)) {
+            val msg = if (normalized.contains("YOUR_ACCOUNT_ID", ignoreCase = true)) {
+                "Replace YOUR_ACCOUNT_ID in Base URL with your Cloudflare Account ID"
+            } else {
+                "Invalid Base URL"
+            }
             throw AiException(
                 ErrorParser.fromThrowable(
-                    IllegalArgumentException("Invalid Base URL"),
+                    IllegalArgumentException(msg),
                     providerName = providerName,
                     endpointUrl = raw,
                     activeApiKey = apiKey,

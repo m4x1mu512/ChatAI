@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.core.model.ApiProtocol
+import com.example.core.model.ProviderType
 import com.example.ui.components.CapabilityBadge
 import com.example.ui.components.ErrorReportCard
 import com.example.ui.components.ProviderLogoBadge
@@ -171,15 +172,54 @@ fun ProviderConfigScreen(
                             .testTag("provider_name_input"),
                     )
 
+                    val isCloudflare = state.type == ProviderType.CLOUDFLARE
+                    val hasPlaceholderAccountId = state.baseUrl.contains("YOUR_ACCOUNT_ID", ignoreCase = true)
+
                     OutlinedTextField(
                         value = state.baseUrl,
                         onValueChange = viewModel::updateBaseUrl,
                         label = { Text(stringResource(R.string.provider_field_base_url)) },
+                        isError = isCloudflare && hasPlaceholderAccountId,
+                        supportingText = if (isCloudflare && hasPlaceholderAccountId) {
+                            { Text(stringResource(R.string.provider_cloudflare_url_warning)) }
+                        } else {
+                            null
+                        },
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("provider_base_url_input"),
                     )
+
+                    if (isCloudflare) {
+                        val accountIdFromUrl = remember(state.baseUrl) {
+                            Regex("""/accounts/([^/]+)(?=/|$)""")
+                                .find(state.baseUrl)
+                                ?.groupValues
+                                ?.getOrNull(1)
+                                ?.takeUnless { it.equals("YOUR_ACCOUNT_ID", ignoreCase = true) }
+                                .orEmpty()
+                        }
+                        OutlinedTextField(
+                            value = accountIdFromUrl,
+                            onValueChange = { entered ->
+                                val cleanId = entered.trim()
+                                val replacement = cleanId.ifBlank { "YOUR_ACCOUNT_ID" }
+                                val updatedUrl = if (state.baseUrl.contains(Regex("""/accounts/[^/]*(?=/|$)"""))) {
+                                    state.baseUrl.replace(Regex("""/accounts/[^/]*(?=/|$)"""), "/accounts/$replacement")
+                                } else {
+                                    "https://api.cloudflare.com/client/v4/accounts/$replacement/ai/v1"
+                                }
+                                viewModel.updateBaseUrl(updatedUrl)
+                            },
+                            label = { Text(stringResource(R.string.provider_field_cloudflare_account_id)) },
+                            supportingText = { Text(stringResource(R.string.provider_cloudflare_account_hint)) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("cloudflare_account_id_input"),
+                        )
+                    }
 
                     OutlinedTextField(
                         value = state.apiKeyInput,
