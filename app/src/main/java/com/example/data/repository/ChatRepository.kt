@@ -114,6 +114,21 @@ class ChatRepository @Inject constructor(
         chatDao.updateChatModel(chatId, providerId, providerName, modelId, System.currentTimeMillis())
     }
 
+    suspend fun updateChatGitHubConfig(
+        chatId: String,
+        repoFullName: String?,
+        branch: String?,
+        toolsEnabled: Boolean,
+    ) {
+        chatDao.updateChatGitHubConfig(
+            chatId = chatId,
+            repoFullName = repoFullName?.trim()?.ifBlank { null },
+            branch = branch?.trim()?.ifBlank { null },
+            toolsEnabled = toolsEnabled,
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
     suspend fun deleteChat(chatId: String) {
         chatDao.deleteChat(chatId)
     }

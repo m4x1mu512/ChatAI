@@ -105,6 +105,15 @@ interface ChatDao {
         updatedAt: Long,
     )
 
+    @Query("UPDATE chats SET githubRepoFullName = :repoFullName, githubBranch = :branch, githubToolsEnabled = :toolsEnabled, updatedAt = :updatedAt WHERE id = :chatId")
+    suspend fun updateChatGitHubConfig(
+        chatId: String,
+        repoFullName: String?,
+        branch: String?,
+        toolsEnabled: Boolean,
+        updatedAt: Long,
+    )
+
     @Query("DELETE FROM chats WHERE id = :chatId")
     suspend fun deleteChat(chatId: String)
 }

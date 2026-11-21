@@ -8,6 +8,7 @@ import com.example.core.model.ChatMessage
 import com.example.core.model.GeneratedMedia
 import com.example.core.model.ProviderConfig
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.JsonObject
 
 data class ConnectionCheckResult(
     val success: Boolean,
@@ -18,6 +19,35 @@ data class ConnectionCheckResult(
     val error: AiError? = null,
 )
 
+data class ToolDefinition(
+    val name: String,
+    val description: String,
+    val parametersSchema: JsonObject,
+)
+
+data class ToolCallRequest(
+    val id: String,
+    val name: String,
+    val argumentsJson: String,
+)
+
+sealed interface ConversationItem {
+    data class StandardMessage(val message: ChatMessage) : ConversationItem
+
+    data class AssistantToolCallTurn(
+        val text: String = "",
+        val reasoningText: String = "",
+        val toolCalls: List<ToolCallRequest>,
+    ) : ConversationItem
+
+    data class ToolResultTurn(
+        val toolCallId: String,
+        val toolName: String,
+        val content: String,
+        val isError: Boolean = false,
+    ) : ConversationItem
+}
+
 data class ChatCompletionRequest(
     val modelId: String,
     val messages: List<ChatMessage>,
@@ -25,6 +55,8 @@ data class ChatCompletionRequest(
     val temperature: Float = 0.7f,
     val maxTokens: Int = 4096,
     val stream: Boolean = true,
+    val tools: List<ToolDefinition> = emptyList(),
+    val toolConversationHistory: List<ConversationItem> = emptyList(),
 )
 
 data class MediaGenerationRequest(
@@ -35,6 +67,11 @@ data class MediaGenerationRequest(
 
 sealed interface StreamEvent {
     data class ContentDelta(val text: String, val reasoningText: String = "") : StreamEvent
+    data class ToolCallsRequested(
+        val calls: List<ToolCallRequest>,
+        val partialText: String = "",
+        val partialReasoning: String = "",
+    ) : StreamEvent
     data class Completed(val fullText: String, val fullReasoning: String = "") : StreamEvent
     data class Failure(val error: AiError) : StreamEvent
 }

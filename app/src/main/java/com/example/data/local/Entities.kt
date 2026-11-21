@@ -76,6 +76,9 @@ data class ChatEntity(
     val modelId: String?,
     val isPinned: Boolean,
     val isArchived: Boolean,
+    val githubRepoFullName: String? = null,
+    val githubBranch: String? = null,
+    val githubToolsEnabled: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
 )
@@ -210,6 +213,9 @@ fun ChatEntity.toDomain(): ChatSession = ChatSession(
     modelId = modelId,
     isPinned = isPinned,
     isArchived = isArchived,
+    githubRepoFullName = githubRepoFullName,
+    githubBranch = githubBranch,
+    githubToolsEnabled = githubToolsEnabled,
     createdAt = createdAt,
     updatedAt = updatedAt,
 )
@@ -222,6 +228,9 @@ fun ChatSession.toEntity(): ChatEntity = ChatEntity(
     modelId = modelId,
     isPinned = isPinned,
     isArchived = isArchived,
+    githubRepoFullName = githubRepoFullName,
+    githubBranch = githubBranch,
+    githubToolsEnabled = githubToolsEnabled,
     createdAt = createdAt,
     updatedAt = updatedAt,
 )

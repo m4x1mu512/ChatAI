@@ -51,6 +51,8 @@ import com.example.ui.screens.chat.ChatScreen
 import com.example.ui.screens.chat.ChatViewModel
 import com.example.ui.screens.chatlist.ChatListScreen
 import com.example.ui.screens.chatlist.ChatListViewModel
+import com.example.ui.screens.github.GitHubScreen
+import com.example.ui.screens.github.GitHubViewModel
 import com.example.ui.screens.media.MediaViewerScreen
 import com.example.ui.screens.providers.ProviderConfigScreen
 import com.example.ui.screens.providers.ProvidersScreen
@@ -83,6 +85,9 @@ data class MediaViewerRoute(
 
 @Serializable
 data object SettingsRoute
+
+@Serializable
+data object GitHubRoute
 
 private enum class TopTab {
     CHATS,
@@ -296,6 +301,7 @@ fun AiChatAppRoot(
                                             navController.navigate(MediaViewerRoute(uris = listOf(videoUri), initialIndex = 0, isVideo = true))
                                         },
                                         onOpenProviders = { navigateTopTab(TopTab.PROVIDERS) },
+                                        onOpenGitHub = { navController.navigate(GitHubRoute) },
                                     )
                                 } else {
                                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -335,6 +341,7 @@ fun AiChatAppRoot(
                             navController.navigate(MediaViewerRoute(uris = listOf(videoUri), initialIndex = 0, isVideo = true))
                         },
                         onOpenProviders = { navigateTopTab(TopTab.PROVIDERS) },
+                        onOpenGitHub = { navController.navigate(GitHubRoute) },
                     )
                 }
 
@@ -350,7 +357,18 @@ fun AiChatAppRoot(
 
                 composable<SettingsRoute> {
                     val vm: SettingsViewModel = hiltViewModel()
-                    SettingsScreen(viewModel = vm)
+                    SettingsScreen(
+                        viewModel = vm,
+                        onOpenGitHub = { navController.navigate(GitHubRoute) },
+                    )
+                }
+
+                composable<GitHubRoute> {
+                    val vm: GitHubViewModel = hiltViewModel()
+                    GitHubScreen(
+                        viewModel = vm,
+                        onBack = { navController.popBackStack() },
+                    )
                 }
             }
         }

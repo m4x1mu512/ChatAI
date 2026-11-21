@@ -89,11 +89,22 @@ class SecureKeyStore @Inject constructor(
         prefs.edit().remove(keyPref(providerId)).apply()
     }
 
+    fun saveGitHubToken(token: String) = saveApiKey(GITHUB_KEY_SLOT, token)
+
+    fun getGitHubToken(): String = getApiKey(GITHUB_KEY_SLOT)
+
+    fun hasGitHubToken(): Boolean = hasApiKey(GITHUB_KEY_SLOT)
+
+    fun getMaskedGitHubToken(): String = getMaskedApiKey(GITHUB_KEY_SLOT)
+
+    fun deleteGitHubToken() = deleteApiKey(GITHUB_KEY_SLOT)
+
     companion object {
         private const val PREFS_NAME = "secure_provider_keys"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val KEY_ALIAS = "ai_chat_provider_master_key_v1"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
+        private const val GITHUB_KEY_SLOT = "__github_pat_v1__"
 
         private fun keyPref(providerId: String): String = "key_$providerId"
 

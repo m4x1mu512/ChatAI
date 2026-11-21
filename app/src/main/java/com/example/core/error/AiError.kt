@@ -53,6 +53,7 @@ class AiException(val aiError: AiError) : Exception(aiError.providerMessage.ifBl
 object SecretRedactor {
     private val keyPatterns = listOf(
         Regex("""(?i)(Bearer\s+)[A-Za-z0-9._\-/+]+=*"""),
+        Regex("""(?i)(token\s+)[A-Za-z0-9._\-/+]+=*"""),
         Regex("""(?i)(x-api-key["':=\s]+)[A-Za-z0-9._\-/+]+=*"""),
         Regex("""\b(sk-[A-Za-z0-9\-_]{8,})\b"""),
         Regex("""\b(sk-ant-[A-Za-z0-9\-_]{8,})\b"""),
@@ -61,6 +62,8 @@ object SecretRedactor {
         Regex("""\b(gsk_[A-Za-z0-9]{8,})\b"""),
         Regex("""\b(pplx-[A-Za-z0-9]{8,})\b"""),
         Regex("""\b(xai-[A-Za-z0-9]{8,})\b"""),
+        Regex("""\b(gh[pousr]_[A-Za-z0-9_]{12,})\b"""),
+        Regex("""\b(github_pat_[A-Za-z0-9_]{16,})\b"""),
     )
 
     fun redact(text: String, activeKey: String = ""): String {
@@ -70,8 +73,11 @@ object SecretRedactor {
         }
         for (regex in keyPatterns) {
             result = regex.replace(result) { match ->
-                if (match.groupValues.size > 1 && regex.pattern.contains("Bearer", ignoreCase = true) ||
-                    regex.pattern.contains("x-api-key", ignoreCase = true)
+                if (match.groupValues.size > 1 && (
+                        regex.pattern.contains("Bearer", ignoreCase = true) ||
+                            regex.pattern.contains("token\\s+", ignoreCase = true) ||
+                            regex.pattern.contains("x-api-key", ignoreCase = true)
+                        )
                 ) {
                     "${match.groupValues[1]}***"
                 } else {

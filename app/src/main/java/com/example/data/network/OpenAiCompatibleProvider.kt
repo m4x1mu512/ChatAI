@@ -352,8 +352,14 @@ class OpenAiCompatibleProvider @Inject constructor(
                     put("content", request.systemPrompt)
                 }
             }
-            for (msg in request.messages) {
-                add(buildMessageJson(msg))
+            if (request.toolConversationHistory.isNotEmpty()) {
+                for (item in request.toolConversationHistory) {
+                    add(buildConversationItemJson(item))
+                }
+            } else {
+                for (msg in request.messages) {
+                    add(buildMessageJson(msg))
+                }
             }
         }
 
@@ -363,6 +369,24 @@ class OpenAiCompatibleProvider @Inject constructor(
             put("stream", request.stream)
             put("temperature", request.temperature.toDouble())
             put("max_tokens", request.maxTokens)
+            if (request.tools.isNotEmpty()) {
+                put(
+                    "tools",
+                    buildJsonArray {
+                        for (tool in request.tools) {
+                            addJsonObject {
+                                put("type", "function")
+                                putJsonObject("function") {
+                                    put("name", tool.name)
+                                    put("description", tool.description)
+                                    put("parameters", tool.parametersSchema)
+                                }
+                            }
+                        }
+                    },
+                )
+                put("tool_choice", "auto")
+            }
         }.toString()
 
         val httpRequest = buildBaseRequest(endpointUrl, config, apiKey)
@@ -415,12 +439,20 @@ class OpenAiCompatibleProvider @Inject constructor(
                 if (!request.stream || contentType.contains("application/json", ignoreCase = true)) {
                     val raw = body.string()
                     val parsed = parseNonStreamingChoice(raw)
-                    emit(StreamEvent.Completed(parsed.first, parsed.second))
+                    if (parsed.toolCalls.isNotEmpty()) {
+                        emit(StreamEvent.ToolCallsRequested(parsed.toolCalls, parsed.text, parsed.reasoning))
+                    } else {
+                        emit(StreamEvent.Completed(parsed.text, parsed.reasoning))
+                    }
                 } else {
-                    val (fullText, fullReasoning) = readSseStream(body.source()) { deltaText, deltaReasoning ->
+                    val parsed = readSseStream(body.source()) { deltaText, deltaReasoning ->
                         emit(StreamEvent.ContentDelta(deltaText, deltaReasoning))
                     }
-                    emit(StreamEvent.Completed(fullText, fullReasoning))
+                    if (parsed.toolCalls.isNotEmpty()) {
+                        emit(StreamEvent.ToolCallsRequested(parsed.toolCalls, parsed.text, parsed.reasoning))
+                    } else {
+                        emit(StreamEvent.Completed(parsed.text, parsed.reasoning))
+                    }
                 }
             }
         } catch (ce: CancellationException) {
@@ -440,6 +472,40 @@ class OpenAiCompatibleProvider @Inject constructor(
             )
         }
     }.flowOn(Dispatchers.IO)
+
+    private suspend fun buildConversationItemJson(item: ConversationItem): JsonObject {
+        return when (item) {
+            is ConversationItem.StandardMessage -> buildMessageJson(item.message)
+            is ConversationItem.AssistantToolCallTurn -> buildJsonObject {
+                put("role", "assistant")
+                if (item.text.isNotBlank()) {
+                    put("content", item.text)
+                } else {
+                    put("content", "")
+                }
+                put(
+                    "tool_calls",
+                    buildJsonArray {
+                        for (tc in item.toolCalls) {
+                            addJsonObject {
+                                put("id", tc.id)
+                                put("type", "function")
+                                putJsonObject("function") {
+                                    put("name", tc.name)
+                                    put("arguments", tc.argumentsJson.ifBlank { "{}" })
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+            is ConversationItem.ToolResultTurn -> buildJsonObject {
+                put("role", "tool")
+                put("tool_call_id", item.toolCallId)
+                put("content", item.content)
+            }
+        }
+    }
 
     private suspend fun buildMessageJson(msg: ChatMessage): JsonObject {
         val role = when (msg.role) {
@@ -509,12 +575,26 @@ class OpenAiCompatibleProvider @Inject constructor(
         }
     }
 
+    private data class ParsedOpenAiResponse(
+        val text: String,
+        val reasoning: String,
+        val toolCalls: List<ToolCallRequest> = emptyList(),
+    )
+
+    private class ToolCallAccumulator(
+        var id: String = "",
+        var name: String = "",
+        val args: StringBuilder = StringBuilder(),
+    )
+
     private suspend fun readSseStream(
         source: BufferedSource,
         onDelta: suspend (String, String) -> Unit,
-    ): Pair<String, String> {
+    ): ParsedOpenAiResponse {
         val fullText = StringBuilder()
         val fullReasoning = StringBuilder()
+        val toolCallMap = sortedMapOf<Int, ToolCallAccumulator>()
+
         while (currentCoroutineContext().isActive && !source.exhausted()) {
             val line = source.readUtf8Line() ?: break
             if (!line.startsWith("data:")) continue
@@ -536,18 +616,58 @@ class OpenAiCompatibleProvider @Inject constructor(
                     fullReasoning.append(reasoning)
                     onDelta(content, reasoning)
                 }
+
+                val tcArray = delta["tool_calls"]?.jsonArray
+                if (tcArray != null) {
+                    tcArray.forEachIndexed { pos, tcElem ->
+                        val tcObj = tcElem as? JsonObject ?: return@forEachIndexed
+                        val idx = (tcObj["index"] as? JsonPrimitive)?.intOrNull ?: pos
+                        val acc = toolCallMap.getOrPut(idx) { ToolCallAccumulator() }
+                        (tcObj["id"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let {
+                            acc.id = it
+                        }
+                        val fnObj = tcObj["function"] as? JsonObject
+                        if (fnObj != null) {
+                            (fnObj["name"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let {
+                                acc.name = it
+                            }
+                            (fnObj["arguments"] as? JsonPrimitive)?.contentOrNull?.let { argChunk ->
+                                acc.args.append(argChunk)
+                            }
+                        }
+                    }
+                }
             }
         }
-        return fullText.toString() to fullReasoning.toString()
+        val finalCalls = toolCallMap.values
+            .filter { it.name.isNotBlank() }
+            .mapIndexed { idx, acc ->
+                ToolCallRequest(
+                    id = acc.id.ifBlank { "call_${idx}_${UUID.randomUUID().toString().take(6)}" },
+                    name = acc.name,
+                    argumentsJson = acc.args.toString().ifBlank { "{}" },
+                )
+            }
+        return ParsedOpenAiResponse(fullText.toString(), fullReasoning.toString(), finalCalls)
     }
 
-    private fun parseNonStreamingChoice(rawJson: String): Pair<String, String> {
+    private fun parseNonStreamingChoice(rawJson: String): ParsedOpenAiResponse {
         val obj = json.parseToJsonElement(rawJson).jsonObject
-        val first = obj["choices"]?.jsonArray?.firstOrNull()?.jsonObject ?: return "" to ""
-        val msg = first["message"]?.jsonObject ?: return "" to ""
+        val first = obj["choices"]?.jsonArray?.firstOrNull()?.jsonObject ?: return ParsedOpenAiResponse("", "")
+        val msg = first["message"]?.jsonObject ?: return ParsedOpenAiResponse("", "")
         val content = msg["content"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val reasoning = msg["reasoning_content"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        return content to reasoning
+        val toolCalls = msg["tool_calls"]?.jsonArray?.mapIndexedNotNull { idx, elem ->
+            val tcObj = elem as? JsonObject ?: return@mapIndexedNotNull null
+            val fn = tcObj["function"] as? JsonObject ?: return@mapIndexedNotNull null
+            val name = fn["name"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            if (name.isEmpty()) return@mapIndexedNotNull null
+            val id = tcObj["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                .ifBlank { "call_${idx}_${UUID.randomUUID().toString().take(6)}" }
+            val args = fn["arguments"]?.jsonPrimitive?.contentOrNull ?: "{}"
+            ToolCallRequest(id = id, name = name, argumentsJson = args)
+        }.orEmpty()
+        return ParsedOpenAiResponse(content, reasoning, toolCalls)
     }
 
     override suspend fun generateImage(

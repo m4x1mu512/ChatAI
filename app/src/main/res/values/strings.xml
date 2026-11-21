@@ -198,4 +198,47 @@
     <string name="settings_max_tokens">Max Tokens: %1$d</string>
     <string name="settings_security_title">Privacy &amp; Security</string>
     <string name="settings_security_desc">No ads, no analytics, no third-party telemetry. API keys are encrypted locally using Android Keystore.</string>
+
+    <!-- GitHub Integration -->
+    <string name="github_title">GitHub</string>
+    <string name="github_settings_desc">Connect your GitHub account so AI models can read code, commit file changes, and manage branches, issues, and PRs.</string>
+    <string name="github_connected_as">Connected as @%1$s</string>
+    <string name="github_not_connected">Not connected</string>
+    <string name="github_configure">Configure GitHub</string>
+    <string name="github_token_label">Personal Access Token (PAT)</string>
+    <string name="github_token_hint">Needs \"repo\" scope (Classic) or Contents, Issues &amp; Pull requests read/write (Fine-grained). Stored encrypted via Android Keystore.</string>
+    <string name="github_connect_button">Verify &amp; Connect</string>
+    <string name="github_disconnect_button">Disconnect</string>
+    <string name="github_tools_enabled">Allow AI models to use GitHub tools</string>
+    <string name="github_tools_enabled_desc">Models can read files, search code, commit updates, and manage branches, issues, and PRs.</string>
+    <string name="github_confirm_writes">Confirm changes before applying</string>
+    <string name="github_confirm_writes_desc">Ask in chat before committing files, deleting files, or creating branches, issues, and PRs.</string>
+    <string name="github_repositories_title">Repositories (%1$d)</string>
+    <string name="github_search_repos_hint">Filter repositories…</string>
+    <string name="github_create_repo">New Repository</string>
+    <string name="github_repo_name_label">Repository Name</string>
+    <string name="github_repo_desc_label">Description (optional)</string>
+    <string name="github_repo_private">Private repository</string>
+    <string name="github_set_default">Set Active</string>
+    <string name="github_default_badge">Active</string>
+    <string name="github_inspect_repo">Browse</string>
+    <string name="github_refresh">Refresh</string>
+    <string name="github_branches">Branches</string>
+    <string name="github_files">Files</string>
+    <string name="github_issues">Issues</string>
+    <string name="github_prs">Pull Requests</string>
+    <string name="github_create_branch">New Branch</string>
+    <string name="github_branch_name_label">New branch name</string>
+    <string name="github_from_branch_label">From branch: %1$s</string>
+    <string name="github_chat_select_repo">GitHub: Select Repo</string>
+    <string name="github_chat_repo_sheet_title">GitHub Repository for This Chat</string>
+    <string name="github_chat_tools_toggle">Enable GitHub AI tools in this chat</string>
+    <string name="github_chat_branch_label">Target Branch</string>
+    <string name="github_chat_clear_repo">Clear Chat Repo</string>
+    <string name="github_approval_title">GitHub Change Approval</string>
+    <string name="github_approval_approve">Approve &amp; Apply</string>
+    <string name="github_approval_reject">Decline</string>
+    <string name="github_scopes_label">Scopes: %1$s</string>
+    <string name="github_private_badge">Private</string>
+    <string name="github_public_badge">Public</string>
 </resources>

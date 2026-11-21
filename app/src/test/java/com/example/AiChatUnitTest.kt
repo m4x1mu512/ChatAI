@@ -3,12 +3,14 @@ package com.example
 import com.example.core.error.AiErrorCategory
 import com.example.core.error.ErrorFormatter
 import com.example.core.error.ErrorParser
+import com.example.core.error.SecretRedactor
 import com.example.core.model.ApiProtocol
 import com.example.core.model.CapabilityInferencer
 import com.example.core.model.ModelCapability
 import com.example.core.model.ProviderConfig
 import com.example.core.model.ProviderType
 import com.example.core.util.UrlDetector
+import com.example.data.github.GitHubValidator
 import com.example.data.network.OpenAiCompatibleProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -183,5 +185,34 @@ class AiChatUnitTest {
         assertEquals("7001", err.errorCode)
         assertEquals("GET not supported for requested URI.", err.providerMessage)
         assertEquals(AiErrorCategory.INVALID_BASE_URL, err.category)
+    }
+
+    @Test
+    fun `secret redactor masks classic and fine grained github tokens`() {
+        val classic = "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz123456"
+        val fineGrained = "github_pat_11ABCDEFG0123456789_xyz987654321"
+        val sample = "Auth failed: Authorization: Bearer $classic and $fineGrained"
+        val redacted = SecretRedactor.redact(sample)
+        assertFalse(redacted.contains(classic))
+        assertFalse(redacted.contains(fineGrained))
+        assertTrue(redacted.contains("Bearer ***"))
+    }
+
+    @Test
+    fun `github validator sanitizes repos paths branches and encodes utf8`() {
+        assertEquals("octocat" to "Hello-World", GitHubValidator.parseFullName(" octocat/Hello-World "))
+        assertEquals(null, GitHubValidator.parseFullName("octocat/bad/repo"))
+        assertEquals("src/main/App.kt", GitHubValidator.normalizePath("/src/main/App.kt/"))
+        assertEquals("main", GitHubValidator.requireBranchOrRef("main"))
+        val traversalBlocked = runCatching { GitHubValidator.normalizePath("../etc/passwd") }.isFailure
+        val queryBlocked = runCatching { GitHubValidator.normalizePath("src/a.kt?foo=1") }.isFailure
+        val refTraversalBlocked = runCatching { GitHubValidator.requireBranchOrRef("feature..bad") }.isFailure
+        assertTrue(traversalBlocked)
+        assertTrue(queryBlocked)
+        assertTrue(refTraversalBlocked)
+
+        val original = "Привет, GitHub! 🚀\nval x = 42"
+        val encoded = GitHubValidator.encodeBase64Utf8(original)
+        assertEquals(original, GitHubValidator.decodeBase64Utf8(encoded))
     }
 }

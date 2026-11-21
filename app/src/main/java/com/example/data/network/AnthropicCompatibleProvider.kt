@@ -29,6 +29,7 @@ import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -167,8 +168,75 @@ class AnthropicCompatibleProvider @Inject constructor(
             .forEach { systemParts += it.content }
 
         val messagesJson = buildJsonArray {
-            for (msg in nonSystemMessages) {
-                add(buildMessageJson(msg))
+            if (request.toolConversationHistory.isNotEmpty()) {
+                val pendingToolResults = mutableListOf<ConversationItem.ToolResultTurn>()
+                suspend fun flushToolResults() {
+                    if (pendingToolResults.isEmpty()) return
+                    addJsonObject {
+                        put("role", "user")
+                        put(
+                            "content",
+                            buildJsonArray {
+                                for (res in pendingToolResults) {
+                                    addJsonObject {
+                                        put("type", "tool_result")
+                                        put("tool_use_id", res.toolCallId)
+                                        put("content", res.content)
+                                        if (res.isError) put("is_error", true)
+                                    }
+                                }
+                            },
+                        )
+                    }
+                    pendingToolResults.clear()
+                }
+
+                for (item in request.toolConversationHistory) {
+                    when (item) {
+                        is ConversationItem.ToolResultTurn -> pendingToolResults += item
+                        is ConversationItem.StandardMessage -> {
+                            flushToolResults()
+                            if (item.message.role == MessageRole.SYSTEM) {
+                                if (item.message.content.isNotBlank()) systemParts += item.message.content
+                            } else {
+                                add(buildMessageJson(item.message))
+                            }
+                        }
+                        is ConversationItem.AssistantToolCallTurn -> {
+                            flushToolResults()
+                            addJsonObject {
+                                put("role", "assistant")
+                                put(
+                                    "content",
+                                    buildJsonArray {
+                                        if (item.text.isNotBlank()) {
+                                            addJsonObject {
+                                                put("type", "text")
+                                                put("text", item.text)
+                                            }
+                                        }
+                                        for (tc in item.toolCalls) {
+                                            val inputObj = runCatching {
+                                                json.parseToJsonElement(tc.argumentsJson.ifBlank { "{}" }).jsonObject
+                                            }.getOrDefault(JsonObject(emptyMap()))
+                                            addJsonObject {
+                                                put("type", "tool_use")
+                                                put("id", tc.id)
+                                                put("name", tc.name)
+                                                put("input", inputObj)
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                flushToolResults()
+            } else {
+                for (msg in nonSystemMessages) {
+                    add(buildMessageJson(msg))
+                }
             }
         }
 
@@ -180,6 +248,20 @@ class AnthropicCompatibleProvider @Inject constructor(
                 put("system", systemParts.joinToString("\n\n"))
             }
             put("messages", messagesJson)
+            if (request.tools.isNotEmpty()) {
+                put(
+                    "tools",
+                    buildJsonArray {
+                        for (tool in request.tools) {
+                            addJsonObject {
+                                put("name", tool.name)
+                                put("description", tool.description)
+                                put("input_schema", tool.parametersSchema)
+                            }
+                        }
+                    },
+                )
+            }
         }.toString()
 
         val httpRequest = buildBaseRequest(endpointUrl, config, apiKey)
@@ -229,10 +311,14 @@ class AnthropicCompatibleProvider @Inject constructor(
                 val contentType = response.header("Content-Type").orEmpty()
                 if (!request.stream || contentType.contains("application/json", ignoreCase = true)) {
                     val raw = body.string()
-                    val text = parseNonStreamingContent(raw)
-                    emit(StreamEvent.Completed(text))
+                    val parsed = parseNonStreamingContent(raw)
+                    if (parsed.toolCalls.isNotEmpty()) {
+                        emit(StreamEvent.ToolCallsRequested(parsed.toolCalls, parsed.text, parsed.thinking))
+                    } else {
+                        emit(StreamEvent.Completed(parsed.text, parsed.thinking))
+                    }
                 } else {
-                    val (fullText, fullThinking) = readAnthropicSse(
+                    val parsed = readAnthropicSse(
                         source = body.source(),
                         providerName = config.displayName,
                         modelId = request.modelId,
@@ -242,7 +328,11 @@ class AnthropicCompatibleProvider @Inject constructor(
                     ) { deltaText, deltaThinking ->
                         emit(StreamEvent.ContentDelta(deltaText, deltaThinking))
                     }
-                    emit(StreamEvent.Completed(fullText, fullThinking))
+                    if (parsed.toolCalls.isNotEmpty()) {
+                        emit(StreamEvent.ToolCallsRequested(parsed.toolCalls, parsed.text, parsed.thinking))
+                    } else {
+                        emit(StreamEvent.Completed(parsed.text, parsed.thinking))
+                    }
                 }
             }
         } catch (ce: CancellationException) {
@@ -338,6 +428,18 @@ class AnthropicCompatibleProvider @Inject constructor(
         }
     }
 
+    private data class ParsedAnthropicResponse(
+        val text: String,
+        val thinking: String,
+        val toolCalls: List<ToolCallRequest> = emptyList(),
+    )
+
+    private class AnthropicToolAccumulator(
+        val id: String,
+        val name: String,
+        val partialJson: StringBuilder = StringBuilder(),
+    )
+
     private suspend fun readAnthropicSse(
         source: BufferedSource,
         providerName: String,
@@ -346,9 +448,10 @@ class AnthropicCompatibleProvider @Inject constructor(
         requestId: String,
         apiKey: String,
         onDelta: suspend (String, String) -> Unit,
-    ): Pair<String, String> {
+    ): ParsedAnthropicResponse {
         val fullText = StringBuilder()
         val fullThinking = StringBuilder()
+        val toolBlocks = sortedMapOf<Int, AnthropicToolAccumulator>()
         var currentEvent = ""
         while (currentCoroutineContext().isActive && !source.exhausted()) {
             val line = source.readUtf8Line() ?: break
@@ -364,20 +467,39 @@ class AnthropicCompatibleProvider @Inject constructor(
             val eventType = obj["type"]?.jsonPrimitive?.contentOrNull ?: currentEvent
 
             when (eventType) {
+                "content_block_start" -> {
+                    val idx = obj["index"]?.jsonPrimitive?.intOrNull ?: continue
+                    val block = obj["content_block"]?.jsonObject ?: continue
+                    if (block["type"]?.jsonPrimitive?.contentOrNull == "tool_use") {
+                        val id = block["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                        val name = block["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                        if (name.isNotBlank()) {
+                            toolBlocks[idx] = AnthropicToolAccumulator(id = id, name = name)
+                        }
+                    }
+                }
                 "content_block_delta" -> {
+                    val idx = obj["index"]?.jsonPrimitive?.intOrNull ?: -1
                     val delta = obj["delta"]?.jsonObject ?: continue
                     val deltaType = delta["type"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    if (deltaType == "thinking_delta") {
-                        val thinking = delta["thinking"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                        if (thinking.isNotEmpty()) {
-                            fullThinking.append(thinking)
-                            onDelta("", thinking)
+                    when (deltaType) {
+                        "thinking_delta" -> {
+                            val thinking = delta["thinking"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                            if (thinking.isNotEmpty()) {
+                                fullThinking.append(thinking)
+                                onDelta("", thinking)
+                            }
                         }
-                    } else {
-                        val text = delta["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                        if (text.isNotEmpty()) {
-                            fullText.append(text)
-                            onDelta(text, "")
+                        "input_json_delta" -> {
+                            val partial = delta["partial_json"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                            toolBlocks[idx]?.partialJson?.append(partial)
+                        }
+                        else -> {
+                            val text = delta["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                            if (text.isNotEmpty()) {
+                                fullText.append(text)
+                                onDelta(text, "")
+                            }
                         }
                     }
                 }
@@ -397,20 +519,38 @@ class AnthropicCompatibleProvider @Inject constructor(
                 "message_stop" -> break
             }
         }
-        return fullText.toString() to fullThinking.toString()
+        val calls = toolBlocks.values.mapIndexed { pos, acc ->
+            ToolCallRequest(
+                id = acc.id.ifBlank { "toolu_$pos" },
+                name = acc.name,
+                argumentsJson = acc.partialJson.toString().ifBlank { "{}" },
+            )
+        }
+        return ParsedAnthropicResponse(fullText.toString(), fullThinking.toString(), calls)
     }
 
-    private fun parseNonStreamingContent(rawJson: String): String {
+    private fun parseNonStreamingContent(rawJson: String): ParsedAnthropicResponse {
         val obj = json.parseToJsonElement(rawJson).jsonObject
-        val contentArr = obj["content"]?.jsonArray ?: return ""
-        return contentArr.mapNotNull { block ->
-            val bObj = block.jsonObject
-            if (bObj["type"]?.jsonPrimitive?.contentOrNull == "text") {
-                bObj["text"]?.jsonPrimitive?.contentOrNull
-            } else {
-                null
+        val contentArr = obj["content"]?.jsonArray ?: return ParsedAnthropicResponse("", "")
+        val textParts = mutableListOf<String>()
+        val thinkingParts = mutableListOf<String>()
+        val toolCalls = mutableListOf<ToolCallRequest>()
+        for (block in contentArr) {
+            val bObj = block as? JsonObject ?: continue
+            when (bObj["type"]?.jsonPrimitive?.contentOrNull) {
+                "text" -> bObj["text"]?.jsonPrimitive?.contentOrNull?.let { textParts += it }
+                "thinking" -> bObj["thinking"]?.jsonPrimitive?.contentOrNull?.let { thinkingParts += it }
+                "tool_use" -> {
+                    val name = bObj["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    val id = bObj["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    val inputStr = bObj["input"]?.toString() ?: "{}"
+                    if (name.isNotBlank()) {
+                        toolCalls += ToolCallRequest(id = id, name = name, argumentsJson = inputStr)
+                    }
+                }
             }
-        }.joinToString("")
+        }
+        return ParsedAnthropicResponse(textParts.joinToString(""), thinkingParts.joinToString(""), toolCalls)
     }
 
     override suspend fun generateImage(

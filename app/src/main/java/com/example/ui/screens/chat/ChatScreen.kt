@@ -14,6 +14,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +48,9 @@ import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AddLink
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Description
@@ -58,30 +61,40 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -98,6 +111,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -109,6 +124,9 @@ import com.example.core.model.AttachmentType
 import com.example.core.model.ChatMessage
 import com.example.core.model.GeneratedMedia
 import com.example.core.model.GeneratedMediaType
+import com.example.core.model.GitHubBranchInfo
+import com.example.core.model.GitHubPendingApproval
+import com.example.core.model.GitHubRepoSummary
 import com.example.core.model.MessageRole
 import com.example.core.model.MessageStatus
 import com.example.ui.components.ErrorReportCard
@@ -128,6 +146,7 @@ fun ChatScreen(
     onOpenImageViewer: (imageUris: List<String>, initialIndex: Int) -> Unit,
     onOpenVideoViewer: (videoUri: String) -> Unit,
     onOpenProviders: () -> Unit,
+    onOpenGitHub: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -138,6 +157,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
 
     var showModelPicker by remember { mutableStateOf(false) }
+    var showGitHubSheet by remember { mutableStateOf(false) }
     var attachMenuExpanded by remember { mutableStateOf(false) }
     var pendingSaveMedia by remember { mutableStateOf<GeneratedMedia?>(null) }
 
@@ -442,9 +462,19 @@ fun ChatScreen(
                     }
                 }
 
+                state.pendingGitHubApproval?.let { approval ->
+                    GitHubApprovalBannerCard(
+                        approval = approval,
+                        onApprove = viewModel::approvePendingGitHubWrite,
+                        onReject = viewModel::rejectPendingGitHubWrite,
+                    )
+                }
+
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Surface(
@@ -487,13 +517,72 @@ fun ChatScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.widthIn(max = 260.dp),
+                                modifier = Modifier.widthIn(max = 220.dp),
                             )
                             Icon(
                                 imageVector = Icons.Outlined.ExpandMore,
                                 contentDescription = stringResource(R.string.chat_switch_model),
                                 modifier = Modifier.size(16.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    val ghConnected = state.gitHubSettings.isConnected
+                    val ghActive = state.isGitHubToolsActiveInChat
+                    val ghChipText = when {
+                        !ghConnected -> stringResource(R.string.github_title)
+                        !state.effectiveGitHubRepo.isNullOrBlank() -> {
+                            val br = state.effectiveGitHubBranch
+                            if (!br.isNullOrBlank()) "${state.effectiveGitHubRepo} ($br)" else state.effectiveGitHubRepo.orEmpty()
+                        }
+                        else -> stringResource(R.string.github_chat_select_repo)
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (ghConnected && ghActive) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+                        },
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                if (ghConnected) {
+                                    viewModel.loadGitHubPickerData()
+                                    showGitHubSheet = true
+                                } else {
+                                    onOpenGitHub()
+                                }
+                            }
+                            .testTag("github_chat_chip"),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Code,
+                                contentDescription = stringResource(R.string.github_title),
+                                modifier = Modifier.size(15.dp),
+                                tint = if (ghConnected && ghActive) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                            Text(
+                                text = ghChipText,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (ghConnected && ghActive) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 200.dp),
                             )
                         }
                     }
@@ -750,6 +839,25 @@ fun ChatScreen(
             onRefreshModels = viewModel::refreshProviderModels,
             onOpenProviders = onOpenProviders,
             onDismiss = { showModelPicker = false },
+        )
+    }
+
+    if (showGitHubSheet) {
+        ChatGitHubPickerSheet(
+            repos = state.gitHubRepos,
+            branches = state.gitHubBranches,
+            selectedRepo = state.effectiveGitHubRepo,
+            selectedBranch = state.effectiveGitHubBranch,
+            toolsEnabledInChat = state.chat?.githubToolsEnabled ?: true,
+            isLoading = state.isLoadingGitHubRepos,
+            onToggleTools = viewModel::toggleChatGitHubTools,
+            onSelectRepo = { repo, branch -> viewModel.selectChatGitHubRepo(repo, branch) },
+            onSelectBranch = { branch -> viewModel.selectChatGitHubRepo(state.effectiveGitHubRepo, branch) },
+            onOpenFullGitHub = {
+                showGitHubSheet = false
+                onOpenGitHub()
+            },
+            onDismiss = { showGitHubSheet = false },
         )
     }
 }
@@ -1151,5 +1259,256 @@ private fun MessageStatusLabel(status: MessageStatus) {
             style = MaterialTheme.typography.labelSmall,
             color = if (status == MessageStatus.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun GitHubApprovalBannerCard(
+    approval: GitHubPendingApproval,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("github_approval_card"),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Code,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Text(
+                    text = stringResource(R.string.github_approval_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
+
+            approval.actions.forEach { action ->
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = action.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                    Text(
+                        text = action.summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
+                    )
+                    if (action.previewContent.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 120.dp),
+                        ) {
+                            Text(
+                                text = action.previewContent,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .verticalScroll(rememberScrollState())
+                                    .horizontalScroll(rememberScrollState()),
+                            )
+                        }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                OutlinedButton(
+                    onClick = onReject,
+                    modifier = Modifier.testTag("github_approval_reject"),
+                ) {
+                    Text(stringResource(R.string.github_approval_reject))
+                }
+                Button(
+                    onClick = onApprove,
+                    modifier = Modifier.testTag("github_approval_confirm"),
+                ) {
+                    Text(stringResource(R.string.github_approval_approve))
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatGitHubPickerSheet(
+    repos: List<GitHubRepoSummary>,
+    branches: List<GitHubBranchInfo>,
+    selectedRepo: String?,
+    selectedBranch: String?,
+    toolsEnabledInChat: Boolean,
+    isLoading: Boolean,
+    onToggleTools: (Boolean) -> Unit,
+    onSelectRepo: (repoFullName: String?, branch: String?) -> Unit,
+    onSelectBranch: (String) -> Unit,
+    onOpenFullGitHub: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var search by remember { mutableStateOf("") }
+    val filtered = remember(repos, search) {
+        val q = search.trim().lowercase()
+        if (q.isEmpty()) repos else repos.filter { it.fullName.lowercase().contains(q) }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.github_chat_repo_sheet_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                TextButton(onClick = onOpenFullGitHub) {
+                    Text(stringResource(R.string.github_configure))
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.github_chat_tools_toggle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = toolsEnabledInChat,
+                    onCheckedChange = onToggleTools,
+                )
+            }
+
+            if (branches.isNotEmpty() && !selectedRepo.isNullOrBlank()) {
+                Text(
+                    text = stringResource(R.string.github_chat_branch_label),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    branches.forEach { b ->
+                        FilterChip(
+                            selected = b.name == selectedBranch,
+                            onClick = { onSelectBranch(b.name) },
+                            label = { Text(b.name) },
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                placeholder = { Text(stringResource(R.string.github_search_repos_hint)) },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            if (isLoading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
+            if (!selectedRepo.isNullOrBlank()) {
+                TextButton(
+                    onClick = { onSelectRepo(null, null) },
+                ) {
+                    Text(stringResource(R.string.github_chat_clear_repo))
+                }
+            }
+
+            HorizontalDivider()
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
+            ) {
+                items(filtered, key = { it.id }) { repo ->
+                    val isSelected = selectedRepo.equals(repo.fullName, ignoreCase = true)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSelectRepo(repo.fullName, repo.defaultBranch)
+                            },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = repo.fullName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                )
+                                Text(
+                                    text = repo.defaultBranch,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Outlined.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

@@ -105,6 +105,9 @@ data class ChatSession(
     val modelId: String?,
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,
+    val githubRepoFullName: String? = null,
+    val githubBranch: String? = null,
+    val githubToolsEnabled: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
 )

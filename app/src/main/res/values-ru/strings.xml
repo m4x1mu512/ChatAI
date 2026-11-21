@@ -198,4 +198,47 @@
     <string name="settings_max_tokens">Макс. токенов: %1$d</string>
     <string name="settings_security_title">Приватность и безопасность</string>
     <string name="settings_security_desc">Без рекламы, трекеров и сторонней аналитики. API-ключи шифруются локально через Android Keystore.</string>
+
+    <!-- GitHub Integration -->
+    <string name="github_title">GitHub</string>
+    <string name="github_settings_desc">Подключите аккаунт GitHub, чтобы AI-модели могли читать код, вносить изменения в файлы, создавать ветки, issue и Pull Request.</string>
+    <string name="github_connected_as">Подключён как @%1$s</string>
+    <string name="github_not_connected">Не подключён</string>
+    <string name="github_configure">Настроить GitHub</string>
+    <string name="github_token_label">Personal Access Token (PAT)</string>
+    <string name="github_token_hint">Требуются права \"repo\" (Classic) или Contents, Issues и Pull requests read/write (Fine-grained). Токен шифруется через Android Keystore.</string>
+    <string name="github_connect_button">Проверить и подключить</string>
+    <string name="github_disconnect_button">Отключить</string>
+    <string name="github_tools_enabled">Разрешить AI-моделям работать с GitHub</string>
+    <string name="github_tools_enabled_desc">Модели смогут читать файлы, искать по коду, коммитить изменения, управлять ветками, issue и PR.</string>
+    <string name="github_confirm_writes">Подтверждать изменения перед записью</string>
+    <string name="github_confirm_writes_desc">Спрашивать разрешение в чате перед коммитом, удалением файлов, созданием веток, issue и PR.</string>
+    <string name="github_repositories_title">Репозитории (%1$d)</string>
+    <string name="github_search_repos_hint">Поиск репозиториев…</string>
+    <string name="github_create_repo">Новый репозиторий</string>
+    <string name="github_repo_name_label">Имя репозитория</string>
+    <string name="github_repo_desc_label">Описание (опционально)</string>
+    <string name="github_repo_private">Приватный репозиторий</string>
+    <string name="github_set_default">Сделать активным</string>
+    <string name="github_default_badge">Активен</string>
+    <string name="github_inspect_repo">Открыть</string>
+    <string name="github_refresh">Обновить</string>
+    <string name="github_branches">Ветки</string>
+    <string name="github_files">Файлы</string>
+    <string name="github_issues">Issues</string>
+    <string name="github_prs">Pull Requests</string>
+    <string name="github_create_branch">Новая ветка</string>
+    <string name="github_branch_name_label">Имя новой ветки</string>
+    <string name="github_from_branch_label">От ветки: %1$s</string>
+    <string name="github_chat_select_repo">GitHub: выбрать репо</string>
+    <string name="github_chat_repo_sheet_title">Репозиторий GitHub для чата</string>
+    <string name="github_chat_tools_toggle">Включить GitHub-инструменты AI в чате</string>
+    <string name="github_chat_branch_label">Целевая ветка</string>
+    <string name="github_chat_clear_repo">Сбросить выбор</string>
+    <string name="github_approval_title">Подтверждение изменений в GitHub</string>
+    <string name="github_approval_approve">Выполнить</string>
+    <string name="github_approval_reject">Отклонить</string>
+    <string name="github_scopes_label">Права: %1$s</string>
+    <string name="github_private_badge">Приватный</string>
+    <string name="github_public_badge">Публичный</string>
 </resources>

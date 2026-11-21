@@ -30,6 +30,14 @@ object AppModule {
         }
     }
 
+    private val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE chats ADD COLUMN githubRepoFullName TEXT")
+            db.execSQL("ALTER TABLE chats ADD COLUMN githubBranch TEXT")
+            db.execSQL("ALTER TABLE chats ADD COLUMN githubToolsEnabled INTEGER NOT NULL DEFAULT 1")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
@@ -37,7 +45,7 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "ai_chat_database.db",
-        ).addMigrations(MIGRATION_1_2)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .addCallback(
                 object : RoomDatabase.Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.core.model.AppLanguage
 import com.example.core.model.AppSettings
+import com.example.core.model.GitHubIntegrationSettings
 import com.example.core.model.ThemeMode
 import com.example.data.local.SettingsDataStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,6 +21,9 @@ class SettingsViewModel @Inject constructor(
 
     val settings: StateFlow<AppSettings> = settingsDataStore.settingsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
+
+    val githubSettings: StateFlow<GitHubIntegrationSettings> = settingsDataStore.githubSettingsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GitHubIntegrationSettings())
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { settingsDataStore.setThemeMode(mode) }

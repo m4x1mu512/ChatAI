@@ -11,12 +11,18 @@ import com.example.core.model.AttachmentType
 import com.example.core.model.ChatMessage
 import com.example.core.model.ChatSession
 import com.example.core.model.GeneratedMedia
+import com.example.core.model.GitHubBranchInfo
+import com.example.core.model.GitHubIntegrationSettings
+import com.example.core.model.GitHubPendingApproval
+import com.example.core.model.GitHubRepoSummary
 import com.example.core.model.MessageStatus
 import com.example.core.model.ProviderConfig
 import com.example.core.model.ProviderStatus
 import com.example.core.util.AttachmentExtractor
 import com.example.core.util.MediaStoreSaver
 import com.example.core.util.UrlDetector
+import com.example.data.github.GitHubRepository
+import com.example.data.github.GitHubValidator
 import com.example.data.local.SettingsDataStore
 import com.example.data.repository.ChatRepository
 import com.example.data.repository.ProviderRepository
@@ -37,6 +43,12 @@ import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 
+private data class ChatGitHubPickerState(
+    val repos: List<GitHubRepoSummary> = emptyList(),
+    val branches: List<GitHubBranchInfo> = emptyList(),
+    val isLoading: Boolean = false,
+)
+
 data class ChatUiState(
     val chat: ChatSession? = null,
     val messages: List<ChatMessage> = emptyList(),
@@ -52,7 +64,24 @@ data class ChatUiState(
     val editingMessage: ChatMessage? = null,
     val isLoadingAttachment: Boolean = false,
     val refreshingProviderIds: Set<String> = emptySet(),
-)
+    val gitHubSettings: GitHubIntegrationSettings = GitHubIntegrationSettings(),
+    val gitHubRepos: List<GitHubRepoSummary> = emptyList(),
+    val gitHubBranches: List<GitHubBranchInfo> = emptyList(),
+    val isLoadingGitHubRepos: Boolean = false,
+    val pendingGitHubApproval: GitHubPendingApproval? = null,
+) {
+    val effectiveGitHubRepo: String?
+        get() = chat?.githubRepoFullName?.takeIf { it.isNotBlank() }
+            ?: gitHubSettings.defaultRepoFullName.takeIf { it.isNotBlank() }
+
+    val effectiveGitHubBranch: String?
+        get() = chat?.githubBranch?.takeIf { it.isNotBlank() }
+
+    val isGitHubToolsActiveInChat: Boolean
+        get() = gitHubSettings.isConnected &&
+            gitHubSettings.toolsEnabled &&
+            (chat?.githubToolsEnabled ?: true)
+}
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
@@ -63,6 +92,7 @@ class ChatViewModel @Inject constructor(
     private val attachmentExtractor: AttachmentExtractor,
     private val mediaStoreSaver: MediaStoreSaver,
     private val settingsDataStore: SettingsDataStore,
+    private val gitHubRepository: GitHubRepository,
 ) : ViewModel() {
 
     private val activeChatId = MutableStateFlow<String?>(null)
@@ -72,6 +102,7 @@ class ChatViewModel @Inject constructor(
     private val isLoadingAttachment = MutableStateFlow(false)
     private val unsupportedWarning = MutableStateFlow<AttachmentType?>(null)
     private val refreshingProviderIds = MutableStateFlow<Set<String>>(emptySet())
+    private val gitHubPickerState = MutableStateFlow(ChatGitHubPickerState())
 
     private var activeGenerationJob: Job? = null
     private var pendingCameraFile: File? = null
@@ -92,19 +123,29 @@ class ChatViewModel @Inject constructor(
         if (id == null) flowOf(emptyList()) else chatRepository.observeMessages(id)
     }
 
+    private val extrasFlow = combine(
+        combine(inputText, stagedAttachments, editingMessage, isLoadingAttachment) { a, b, c, d ->
+            arrayOf(a, b, c, d)
+        },
+        combine(
+            unsupportedWarning,
+            refreshingProviderIds,
+            gitHubRepository.settingsFlow,
+            gitHubPickerState,
+            sendMessageUseCase.pendingApprovals,
+        ) { warning, refreshing, ghSettings, ghPicker, approvals ->
+            arrayOf(warning, refreshing, ghSettings, ghPicker, approvals)
+        },
+    ) { coreExtras, auxExtras ->
+        coreExtras to auxExtras
+    }
+
     val uiState: StateFlow<ChatUiState> = combine(
         chatFlow,
         messagesFlow,
         providerRepository.observeProviders(),
         providerRepository.observeEnabledModels(),
-        combine(
-            combine(inputText, stagedAttachments, editingMessage, isLoadingAttachment) { a, b, c, d ->
-                arrayOf(a, b, c, d)
-            },
-            combine(unsupportedWarning, refreshingProviderIds) { e, f -> e to f },
-        ) { coreExtras, auxExtras ->
-            coreExtras to auxExtras
-        },
+        extrasFlow,
     ) { chat, messages, providers, models, bundledExtras ->
         val (extras, auxExtras) = bundledExtras
         val text = extras[0] as String
@@ -112,8 +153,14 @@ class ChatViewModel @Inject constructor(
         val attachments = extras[1] as List<Attachment>
         val editing = extras[2] as ChatMessage?
         val loadingAtt = extras[3] as Boolean
-        val warning = auxExtras.first
-        val refreshing = auxExtras.second
+
+        val warning = auxExtras[0] as AttachmentType?
+        @Suppress("UNCHECKED_CAST")
+        val refreshing = auxExtras[1] as Set<String>
+        val ghSettings = auxExtras[2] as GitHubIntegrationSettings
+        val ghPicker = auxExtras[3] as ChatGitHubPickerState
+        @Suppress("UNCHECKED_CAST")
+        val approvalsMap = auxExtras[4] as Map<String, GitHubPendingApproval>
 
         val enabledProviders = providers.filter { it.isEnabled }
         val activeProv = enabledProviders.firstOrNull { it.id == chat?.providerId }
@@ -151,6 +198,11 @@ class ChatViewModel @Inject constructor(
             editingMessage = editing,
             isLoadingAttachment = loadingAtt,
             refreshingProviderIds = refreshing,
+            gitHubSettings = ghSettings,
+            gitHubRepos = ghPicker.repos,
+            gitHubBranches = ghPicker.branches,
+            isLoadingGitHubRepos = ghPicker.isLoading,
+            pendingGitHubApproval = chat?.id?.let { approvalsMap[it] },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatUiState())
 
@@ -170,6 +222,70 @@ class ChatViewModel @Inject constructor(
             providerRepository.fetchAndStoreModels(providerId)
             refreshingProviderIds.value = refreshingProviderIds.value - providerId
         }
+    }
+
+    fun loadGitHubPickerData() {
+        viewModelScope.launch {
+            gitHubPickerState.value = gitHubPickerState.value.copy(isLoading = true)
+            val repos = gitHubRepository.listRepos().getOrDefault(gitHubPickerState.value.repos)
+            val activeRepo = uiState.value.effectiveGitHubRepo
+            val branches = if (!activeRepo.isNullOrBlank()) {
+                GitHubValidator.parseFullName(activeRepo)?.let { (owner, repo) ->
+                    gitHubRepository.listBranches(owner, repo).getOrDefault(emptyList())
+                }.orEmpty()
+            } else {
+                emptyList()
+            }
+            gitHubPickerState.value = ChatGitHubPickerState(
+                repos = repos,
+                branches = branches,
+                isLoading = false,
+            )
+        }
+    }
+
+    fun selectChatGitHubRepo(fullName: String?, branch: String?) {
+        val chatId = activeChatId.value ?: return
+        val currentEnabled = uiState.value.chat?.githubToolsEnabled ?: true
+        viewModelScope.launch {
+            chatRepository.updateChatGitHubConfig(
+                chatId = chatId,
+                repoFullName = fullName,
+                branch = branch,
+                toolsEnabled = currentEnabled,
+            )
+            if (!fullName.isNullOrBlank()) {
+                GitHubValidator.parseFullName(fullName)?.let { (owner, repo) ->
+                    val branches = gitHubRepository.listBranches(owner, repo).getOrDefault(emptyList())
+                    gitHubPickerState.value = gitHubPickerState.value.copy(branches = branches)
+                }
+            } else {
+                gitHubPickerState.value = gitHubPickerState.value.copy(branches = emptyList())
+            }
+        }
+    }
+
+    fun toggleChatGitHubTools(enabled: Boolean) {
+        val chatId = activeChatId.value ?: return
+        val chat = uiState.value.chat
+        viewModelScope.launch {
+            chatRepository.updateChatGitHubConfig(
+                chatId = chatId,
+                repoFullName = chat?.githubRepoFullName,
+                branch = chat?.githubBranch,
+                toolsEnabled = enabled,
+            )
+        }
+    }
+
+    fun approvePendingGitHubWrite() {
+        val chatId = activeChatId.value ?: return
+        sendMessageUseCase.approvePendingGitHubAction(chatId)
+    }
+
+    fun rejectPendingGitHubWrite() {
+        val chatId = activeChatId.value ?: return
+        sendMessageUseCase.rejectPendingGitHubAction(chatId)
     }
 
     fun updateInputText(text: String) {
