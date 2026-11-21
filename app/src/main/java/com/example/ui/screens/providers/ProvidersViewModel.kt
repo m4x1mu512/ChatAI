@@ -485,11 +485,14 @@ class ProvidersViewModel @Inject constructor(
         if (modelId.isEmpty()) return
         viewModelScope.launch {
             if (!state.isExisting) {
-                providerRepository.saveProvider(
+                val saved = providerRepository.saveProvider(
                     config = buildDraftConfig(state),
                     newApiKey = state.apiKeyInput,
                     fetchModelsAfterSave = false,
                 )
+                if (state.models.isNotEmpty()) {
+                    providerRepository.saveModelsForProvider(saved.id, state.models)
+                }
             }
             providerRepository.addManualModel(state.id, modelId)
             _editorState.value = _editorState.value.copy(

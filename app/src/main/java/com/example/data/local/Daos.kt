@@ -1,10 +1,9 @@
 package com.example.data.local
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -21,7 +20,7 @@ interface ProviderDao {
     @Query("SELECT * FROM providers WHERE id = :id")
     fun observeProvider(id: String): Flow<ProviderEntity?>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertProvider(provider: ProviderEntity)
 
     @Query("DELETE FROM providers WHERE id = :id")
@@ -54,7 +53,7 @@ interface ModelDao {
     @Query("SELECT * FROM ai_models WHERE providerId = :providerId AND modelId = :modelId")
     suspend fun getModel(providerId: String, modelId: String): AiModelEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertModels(models: List<AiModelEntity>)
 
     @Query("UPDATE ai_models SET isEnabled = :enabled WHERE providerId = :providerId AND modelId = :modelId")
@@ -84,7 +83,7 @@ interface ChatDao {
     @Query("SELECT * FROM chats WHERE id = :chatId")
     suspend fun getChat(chatId: String): ChatEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertChat(chat: ChatEntity)
 
     @Query("UPDATE chats SET title = :title, updatedAt = :updatedAt WHERE id = :chatId")
@@ -129,7 +128,7 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE id = :messageId")
     suspend fun getMessage(messageId: String): MessageEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertMessage(message: MessageEntity)
 
     @Query("DELETE FROM messages WHERE id = :messageId")
@@ -147,7 +146,7 @@ interface AttachmentDao {
     @Query("SELECT * FROM attachments WHERE messageId = :messageId")
     suspend fun getAttachmentsForMessage(messageId: String): List<AttachmentEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertAttachments(attachments: List<AttachmentEntity>)
 
     @Query("DELETE FROM attachments WHERE messageId = :messageId")
