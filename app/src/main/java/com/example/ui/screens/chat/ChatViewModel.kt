@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.core.error.AiError
+import com.example.core.error.ErrorParser
 import com.example.core.model.AiModelInfo
 import com.example.core.model.Attachment
 import com.example.core.model.AttachmentType
@@ -64,6 +66,7 @@ data class ChatUiState(
     val editingMessage: ChatMessage? = null,
     val isLoadingAttachment: Boolean = false,
     val refreshingProviderIds: Set<String> = emptySet(),
+    val modelLoadErrors: Map<String, AiError> = emptyMap(),
     val gitHubSettings: GitHubIntegrationSettings = GitHubIntegrationSettings(),
     val gitHubRepos: List<GitHubRepoSummary> = emptyList(),
     val gitHubBranches: List<GitHubBranchInfo> = emptyList(),
@@ -102,16 +105,39 @@ class ChatViewModel @Inject constructor(
     private val isLoadingAttachment = MutableStateFlow(false)
     private val unsupportedWarning = MutableStateFlow<AttachmentType?>(null)
     private val refreshingProviderIds = MutableStateFlow<Set<String>>(emptySet())
+    private val modelLoadErrors = MutableStateFlow<Map<String, AiError>>(emptyMap())
     private val gitHubPickerState = MutableStateFlow(ChatGitHubPickerState())
 
     private var activeGenerationJob: Job? = null
     private var pendingCameraFile: File? = null
+    private val attemptedSyncSignatures = mutableMapOf<String, String>()
 
     init {
         viewModelScope.launch {
-            providerRepository.syncMissingModelsForConnectedProviders()
+            combine(
+                providerRepository.observeProviders(),
+                providerRepository.observeEnabledModels(),
+            ) { providers, models -> providers to models }.collect { (providers, models) ->
+                val enabled = providers.filter { it.isEnabled }
+                val activeIds = enabled.map { it.id }.toSet()
+                attemptedSyncSignatures.keys.retainAll(activeIds)
+                modelLoadErrors.value = modelLoadErrors.value.filterKeys { it in activeIds }
+                val needsAutoSync = enabled.any { p ->
+                    val hasModels = models.any { it.providerId == p.id }
+                    val sig = providerSyncSignature(p)
+                    !hasModels &&
+                        (p.hasApiKey || !p.type.requiresApiKey || p.status == ProviderStatus.CONNECTED || p.customHeaders.isNotEmpty()) &&
+                        attemptedSyncSignatures[p.id] != sig
+                }
+                if (needsAutoSync) {
+                    syncMissingModelsInternal(forceRefresh = false)
+                }
+            }
         }
     }
+
+    private fun providerSyncSignature(p: ProviderConfig): String =
+        "${p.baseUrl}|${p.hasApiKey}|${p.protocol}|${p.isEnabled}|${p.customHeaders.size}"
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val chatFlow = activeChatId.flatMapLatest { id ->
@@ -130,14 +156,15 @@ class ChatViewModel @Inject constructor(
         combine(
             unsupportedWarning,
             refreshingProviderIds,
+            modelLoadErrors,
             gitHubRepository.settingsFlow,
             gitHubPickerState,
-            sendMessageUseCase.pendingApprovals,
-        ) { warning, refreshing, ghSettings, ghPicker, approvals ->
-            arrayOf(warning, refreshing, ghSettings, ghPicker, approvals)
+        ) { warning, refreshing, loadErrors, ghSettings, ghPicker ->
+            arrayOf(warning, refreshing, loadErrors, ghSettings, ghPicker)
         },
-    ) { coreExtras, auxExtras ->
-        coreExtras to auxExtras
+        sendMessageUseCase.pendingApprovals,
+    ) { coreExtras, auxExtras, approvals ->
+        Triple(coreExtras, auxExtras, approvals)
     }
 
     val uiState: StateFlow<ChatUiState> = combine(
@@ -147,7 +174,7 @@ class ChatViewModel @Inject constructor(
         providerRepository.observeEnabledModels(),
         extrasFlow,
     ) { chat, messages, providers, models, bundledExtras ->
-        val (extras, auxExtras) = bundledExtras
+        val (extras, auxExtras, approvalsMap) = bundledExtras
         val text = extras[0] as String
         @Suppress("UNCHECKED_CAST")
         val attachments = extras[1] as List<Attachment>
@@ -157,13 +184,14 @@ class ChatViewModel @Inject constructor(
         val warning = auxExtras[0] as AttachmentType?
         @Suppress("UNCHECKED_CAST")
         val refreshing = auxExtras[1] as Set<String>
-        val ghSettings = auxExtras[2] as GitHubIntegrationSettings
-        val ghPicker = auxExtras[3] as ChatGitHubPickerState
         @Suppress("UNCHECKED_CAST")
-        val approvalsMap = auxExtras[4] as Map<String, GitHubPendingApproval>
+        val loadErrors = auxExtras[2] as Map<String, AiError>
+        val ghSettings = auxExtras[3] as GitHubIntegrationSettings
+        val ghPicker = auxExtras[4] as ChatGitHubPickerState
 
         val enabledProviders = providers.filter { it.isEnabled }
         val activeProv = enabledProviders.firstOrNull { it.id == chat?.providerId }
+            ?: enabledProviders.firstOrNull { p -> models.any { it.providerId == p.id } }
             ?: enabledProviders.firstOrNull { it.status == ProviderStatus.CONNECTED }
             ?: enabledProviders.firstOrNull { it.hasApiKey || !it.type.requiresApiKey }
             ?: enabledProviders.firstOrNull()
@@ -198,6 +226,7 @@ class ChatViewModel @Inject constructor(
             editingMessage = editing,
             isLoadingAttachment = loadingAtt,
             refreshingProviderIds = refreshing,
+            modelLoadErrors = loadErrors,
             gitHubSettings = ghSettings,
             gitHubRepos = ghPicker.repos,
             gitHubBranches = ghPicker.branches,
@@ -208,19 +237,113 @@ class ChatViewModel @Inject constructor(
 
     fun loadChat(chatId: String) {
         activeChatId.value = chatId
+        syncConnectedProviderModels()
     }
 
     fun syncConnectedProviderModels() {
         viewModelScope.launch {
-            providerRepository.syncMissingModelsForConnectedProviders()
+            syncMissingModelsInternal(forceRefresh = false)
+        }
+    }
+
+    fun refreshAllProviderModels() {
+        viewModelScope.launch {
+            syncMissingModelsInternal(forceRefresh = true)
         }
     }
 
     fun refreshProviderModels(providerId: String) {
         viewModelScope.launch {
+            if (providerId in refreshingProviderIds.value) return@launch
             refreshingProviderIds.value = refreshingProviderIds.value + providerId
-            providerRepository.fetchAndStoreModels(providerId)
-            refreshingProviderIds.value = refreshingProviderIds.value - providerId
+            modelLoadErrors.value = modelLoadErrors.value - providerId
+            try {
+                val provider = providerRepository.getProvider(providerId)
+                val res = providerRepository.fetchAndStoreModels(providerId)
+                res.fold(
+                    onSuccess = { loaded ->
+                        modelLoadErrors.value = modelLoadErrors.value - providerId
+                        autoBindActiveChatModelIfNeeded(providerId, loaded)
+                    },
+                    onFailure = { throwable ->
+                        val parsed = ErrorParser.fromThrowable(
+                            throwable,
+                            providerName = provider?.displayName ?: "Provider",
+                            endpointUrl = provider?.baseUrl.orEmpty(),
+                            activeApiKey = providerRepository.getApiKey(providerId),
+                        )
+                        modelLoadErrors.value = modelLoadErrors.value + (providerId to parsed)
+                    },
+                )
+            } finally {
+                refreshingProviderIds.value = refreshingProviderIds.value - providerId
+            }
+        }
+    }
+
+    private suspend fun syncMissingModelsInternal(forceRefresh: Boolean) {
+        val providers = providerRepository.observeProviders().first()
+        val existingModels = providerRepository.observeEnabledModels().first()
+        val enabled = providers.filter { it.isEnabled }
+        if (enabled.isEmpty()) return
+
+        val targets = if (forceRefresh) {
+            enabled
+        } else {
+            enabled.filter { p ->
+                val hasModels = existingModels.any { it.providerId == p.id }
+                val sig = providerSyncSignature(p)
+                !hasModels &&
+                    (p.hasApiKey || !p.type.requiresApiKey || p.status == ProviderStatus.CONNECTED || p.customHeaders.isNotEmpty()) &&
+                    attemptedSyncSignatures[p.id] != sig
+            }
+        }.filter { it.id !in refreshingProviderIds.value }
+
+        if (targets.isEmpty()) return
+
+        val targetIds = targets.map { it.id }
+        targets.forEach { p -> attemptedSyncSignatures[p.id] = providerSyncSignature(p) }
+        refreshingProviderIds.value = refreshingProviderIds.value + targetIds
+        modelLoadErrors.value = modelLoadErrors.value - targetIds.toSet()
+
+        try {
+            val results = providerRepository.syncModelsForProviders(
+                targetProviderIds = targetIds,
+                onlyIfEmpty = !forceRefresh,
+            )
+            val updatedErrors = modelLoadErrors.value.toMutableMap()
+            for (target in targets) {
+                val res = results[target.id] ?: continue
+                res.fold(
+                    onSuccess = { loaded ->
+                        updatedErrors.remove(target.id)
+                        autoBindActiveChatModelIfNeeded(target.id, loaded)
+                    },
+                    onFailure = { throwable ->
+                        updatedErrors[target.id] = ErrorParser.fromThrowable(
+                            throwable,
+                            providerName = target.displayName,
+                            endpointUrl = target.baseUrl,
+                            activeApiKey = providerRepository.getApiKey(target.id),
+                        )
+                    },
+                )
+            }
+            modelLoadErrors.value = updatedErrors
+        } finally {
+            refreshingProviderIds.value = refreshingProviderIds.value - targetIds.toSet()
+        }
+    }
+
+    private suspend fun autoBindActiveChatModelIfNeeded(providerId: String, loadedModels: List<AiModelInfo>) {
+        val chatId = activeChatId.value ?: return
+        val firstEnabled = loadedModels.firstOrNull { it.isEnabled } ?: loadedModels.firstOrNull() ?: return
+        val chat = chatRepository.getChat(chatId) ?: return
+        val prov = providerRepository.getProvider(providerId) ?: return
+        val targetModelId = prov.selectedModelId?.takeIf { sel -> loadedModels.any { it.modelId == sel && it.isEnabled } }
+            ?: firstEnabled.modelId
+        if (chat.modelId.isNullOrBlank() && (chat.providerId == null || chat.providerId == providerId)) {
+            chatRepository.updateChatModel(chatId, prov.id, prov.displayName, targetModelId)
         }
     }
 

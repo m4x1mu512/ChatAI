@@ -165,23 +165,71 @@ class OpenAiCompatibleProvider @Inject constructor(
         withContext(Dispatchers.IO) {
             runCatching {
                 val base = validateBaseUrl(config.baseUrl, config.displayName, apiKey)
-                val primaryUrl = resolveModelsEndpointUrl(config, base)
-                val bodyStr = runCatching { executeModelsGet(primaryUrl, config, apiKey) }
-                    .recoverCatching { throwable ->
-                        val err = (throwable as? AiException)?.aiError
-                        val fallbackUrl = cloudflareFallbackUrl(base)
-                        if ((err?.httpStatus == 404 || err?.httpStatus == 405) &&
-                            fallbackUrl != null &&
-                            fallbackUrl != primaryUrl
-                        ) {
-                            executeModelsGet(fallbackUrl, config, apiKey)
-                        } else {
-                            throw throwable
-                        }
-                    }.getOrThrow()
-                parseModelsResponse(config.id, bodyStr)
+                val candidates = buildCandidateModelsUrls(config, base)
+                var lastFailure: Throwable? = null
+                for ((index, url) in candidates.withIndex()) {
+                    val attempt = runCatching {
+                        val bodyStr = executeModelsGet(url, config, apiKey)
+                        validateAndParseModels(config.id, config.displayName, url, apiKey, bodyStr)
+                    }
+                    if (attempt.isSuccess) {
+                        return@runCatching attempt.getOrThrow()
+                    }
+                    val err = attempt.exceptionOrNull()
+                    if (lastFailure == null) {
+                        lastFailure = err
+                    }
+                    val aiErr = (err as? AiException)?.aiError
+                    val hasNext = index < candidates.lastIndex
+                    val shouldRetryNext = hasNext && (
+                        aiErr?.httpStatus == 404 ||
+                            aiErr?.httpStatus == 405 ||
+                            aiErr?.category == AiErrorCategory.INVALID_BASE_URL
+                        )
+                    if (!shouldRetryNext) {
+                        throw err!!
+                    }
+                }
+                throw lastFailure ?: IllegalStateException("Failed to load models")
             }
         }
+
+    private fun validateAndParseModels(
+        providerId: String,
+        providerName: String,
+        url: String,
+        apiKey: String,
+        bodyStr: String,
+    ): List<AiModelInfo> {
+        val trimmed = bodyStr.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        val parsedJson = runCatching { modelsJsonParser.parseToJsonElement(trimmed) }.getOrNull()
+        if (parsedJson == null) {
+            val isHtml = trimmed.startsWith("<!doctype", ignoreCase = true) ||
+                trimmed.startsWith("<html", ignoreCase = true) ||
+                trimmed.contains("cf_chl_opt")
+            val message = if (isHtml) {
+                "Server returned HTML page instead of JSON models list. Check Base URL."
+            } else {
+                "Server returned non-JSON response when fetching models."
+            }
+            throw AiException(
+                ErrorParser.fromHttpResponse(
+                    statusCode = 200,
+                    body = trimmed,
+                    providerName = providerName,
+                    modelId = "",
+                    endpointUrl = url,
+                    activeApiKey = apiKey,
+                ).copy(
+                    errorCode = if (isHtml) "HTML_RESPONSE" else "INVALID_JSON",
+                    providerMessage = message,
+                    category = AiErrorCategory.INVALID_BASE_URL,
+                ),
+            )
+        }
+        return parseModelsJson(providerId, trimmed)
+    }
 
     private fun executeModelsGet(url: String, config: ProviderConfig, apiKey: String): String {
         val request = buildBaseRequest(url, config, apiKey)
@@ -225,6 +273,43 @@ class OpenAiCompatibleProvider @Inject constructor(
             return "$normalizedBase/models"
         }
 
+        internal fun buildCandidateModelsUrls(config: ProviderConfig, normalizedBase: String): List<String> {
+            val candidates = mutableListOf<String>()
+            candidates += resolveModelsEndpointUrl(config, normalizedBase)
+            cloudflareFallbackUrl(normalizedBase)?.let { candidates += it }
+
+            val isCloudflare = config.type == ProviderType.CLOUDFLARE ||
+                normalizedBase.contains("api.cloudflare.com", ignoreCase = true)
+            if (!isCloudflare) {
+                if (normalizedBase.contains("generativelanguage.googleapis.com", ignoreCase = true) &&
+                    !normalizedBase.endsWith("/openai", ignoreCase = true)
+                ) {
+                    if (normalizedBase.endsWith("/v1beta", ignoreCase = true) ||
+                        normalizedBase.endsWith("/v1", ignoreCase = true)
+                    ) {
+                        candidates += "$normalizedBase/openai/models"
+                    } else {
+                        candidates += "$normalizedBase/v1beta/openai/models"
+                    }
+                } else if (!normalizedBase.endsWith("/v1", ignoreCase = true) &&
+                    !normalizedBase.endsWith("/v1beta", ignoreCase = true) &&
+                    !normalizedBase.endsWith("/openai", ignoreCase = true) &&
+                    !normalizedBase.endsWith("/v2", ignoreCase = true)
+                ) {
+                    candidates += "$normalizedBase/v1/models"
+                }
+
+                if (config.type == ProviderType.CUSTOM_OPENAI ||
+                    normalizedBase.contains(":11434") ||
+                    normalizedBase.contains("ollama", ignoreCase = true)
+                ) {
+                    val rootWithoutV1 = normalizedBase.replace(Regex("(?i)/v1$"), "")
+                    candidates += "$rootWithoutV1/api/tags"
+                }
+            }
+            return candidates.distinct()
+        }
+
         internal fun cloudflareFallbackUrl(normalizedBase: String): String? {
             if (normalizedBase.endsWith("/ai/v1", ignoreCase = true)) {
                 return "${normalizedBase.dropLast(3)}/models/search?per_page=100"
@@ -248,14 +333,20 @@ class OpenAiCompatibleProvider @Inject constructor(
                 is JsonArray -> root
                 is JsonObject -> {
                     val dataField = root["data"]
+                    val resultField = root["result"]
                     when {
                         dataField is JsonArray -> dataField
                         dataField is JsonObject && dataField["models"] is JsonArray -> dataField["models"] as JsonArray
                         dataField is JsonObject && dataField["items"] is JsonArray -> dataField["items"] as JsonArray
-                        root["result"] is JsonArray -> root["result"] as JsonArray
+                        resultField is JsonArray -> resultField
+                        resultField is JsonObject && resultField["models"] is JsonArray -> resultField["models"] as JsonArray
+                        resultField is JsonObject && resultField["data"] is JsonArray -> resultField["data"] as JsonArray
+                        resultField is JsonObject && resultField["items"] is JsonArray -> resultField["items"] as JsonArray
                         root["models"] is JsonArray -> root["models"] as JsonArray
                         root["results"] is JsonArray -> root["results"] as JsonArray
                         root["items"] is JsonArray -> root["items"] as JsonArray
+                        root["value"] is JsonArray -> root["value"] as JsonArray
+                        root["list"] is JsonArray -> root["list"] as JsonArray
                         else -> JsonArray(emptyList())
                     }
                 }
@@ -276,8 +367,10 @@ class OpenAiCompatibleProvider @Inject constructor(
                         )
                     }
                     is JsonObject -> {
-                        val rawName = (element["name"] as? JsonPrimitive)?.contentOrNull?.trim()
-                        val rawId = (element["id"] as? JsonPrimitive)?.contentOrNull?.trim()
+                        val rawName = (element["name"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                        val rawId = (element["id"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                        val rawModel = (element["model"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                        val rawSlug = (element["slug"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
                         val taskName = ((element["task"] as? JsonObject)?.get("name") as? JsonPrimitive)
                             ?.contentOrNull?.trim().orEmpty()
                         val isCloudflareSchema = (element["task"] is JsonObject) ||
@@ -287,21 +380,21 @@ class OpenAiCompatibleProvider @Inject constructor(
                             return@mapNotNull null
                         }
 
-                        val id = if (isCloudflareSchema && !rawName.isNullOrBlank()) {
+                        val id = if (isCloudflareSchema && rawName != null) {
                             rawName
                         } else {
                             rawId
-                                ?: (element["model"] as? JsonPrimitive)?.contentOrNull
+                                ?: rawModel
                                 ?: rawName
-                                ?: (element["slug"] as? JsonPrimitive)?.contentOrNull
+                                ?: rawSlug
                                 ?: return@mapNotNull null
                         }
-                        val display = (element["display_name"] as? JsonPrimitive)?.contentOrNull
-                            ?: (element["displayName"] as? JsonPrimitive)?.contentOrNull
+                        val display = (element["display_name"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                            ?: (element["displayName"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
                             ?: rawName
                             ?: id
-                        val ownedBy = (element["owned_by"] as? JsonPrimitive)?.contentOrNull
-                            ?: (element["provider"] as? JsonPrimitive)?.contentOrNull
+                        val ownedBy = (element["owned_by"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                            ?: (element["provider"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
                             ?: if (isCloudflareSchema) "cloudflare" else ""
                         val ctx = (element["context_length"] as? JsonPrimitive)?.intOrNull
                             ?: (element["context_window"] as? JsonPrimitive)?.intOrNull
@@ -845,8 +938,14 @@ class OpenAiCompatibleProvider @Inject constructor(
     }
 
     private fun normalizeBaseUrl(raw: String): String {
-        val trimmed = raw.trim().trimEnd('/')
+        var trimmed = raw.trim().trimEnd('/')
         if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return ""
+        val suffixes = listOf("/chat/completions", "/messages", "/models/search", "/models")
+        for (suffix in suffixes) {
+            if (trimmed.endsWith(suffix, ignoreCase = true)) {
+                trimmed = trimmed.dropLast(suffix.length).trimEnd('/')
+            }
+        }
         return trimmed
     }
 

@@ -215,4 +215,66 @@ class AiChatUnitTest {
         val encoded = GitHubValidator.encodeBase64Utf8(original)
         assertEquals(original, GitHubValidator.decodeBase64Utf8(encoded))
     }
+
+    @Test
+    fun `buildCandidateModelsUrls includes v1, gemini, and ollama fallbacks`() {
+        val noV1Config = ProviderConfig(
+            id = "p1",
+            type = ProviderType.OPENAI,
+            displayName = "OpenAI",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.openai.com",
+        )
+        assertEquals(
+            listOf("https://api.openai.com/models", "https://api.openai.com/v1/models"),
+            OpenAiCompatibleProvider.buildCandidateModelsUrls(noV1Config, "https://api.openai.com"),
+        )
+
+        val geminiRootConfig = ProviderConfig(
+            id = "p2",
+            type = ProviderType.GOOGLE_GEMINI,
+            displayName = "Gemini",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://generativelanguage.googleapis.com/v1beta",
+        )
+        assertEquals(
+            listOf(
+                "https://generativelanguage.googleapis.com/v1beta/models",
+                "https://generativelanguage.googleapis.com/v1beta/openai/models",
+            ),
+            OpenAiCompatibleProvider.buildCandidateModelsUrls(
+                geminiRootConfig,
+                "https://generativelanguage.googleapis.com/v1beta",
+            ),
+        )
+
+        val ollamaConfig = ProviderConfig(
+            id = "p3",
+            type = ProviderType.CUSTOM_OPENAI,
+            displayName = "Ollama",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "http://localhost:11434/v1",
+        )
+        assertEquals(
+            listOf("http://localhost:11434/v1/models", "http://localhost:11434/api/tags"),
+            OpenAiCompatibleProvider.buildCandidateModelsUrls(ollamaConfig, "http://localhost:11434/v1"),
+        )
+    }
+
+    @Test
+    fun `parseModelsJson handles ollama tags and skips empty id shadowing model name`() {
+        val ollamaTagsJson = """
+            {
+              "models": [
+                {"name": "llama3.2:latest", "model": "llama3.2:latest"},
+                {"id": "", "model": "qwen2.5-coder:7b", "display_name": "Qwen 2.5 Coder"}
+              ]
+            }
+        """.trimIndent()
+        val parsed = OpenAiCompatibleProvider.parseModelsJson("ollama-1", ollamaTagsJson)
+        assertEquals(2, parsed.size)
+        assertEquals("llama3.2:latest", parsed[0].modelId)
+        assertEquals("qwen2.5-coder:7b", parsed[1].modelId)
+        assertEquals("Qwen 2.5 Coder", parsed[1].displayName)
+    }
 }

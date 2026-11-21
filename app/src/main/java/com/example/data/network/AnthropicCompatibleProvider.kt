@@ -101,52 +101,121 @@ class AnthropicCompatibleProvider @Inject constructor(
         withContext(Dispatchers.IO) {
             runCatching {
                 val base = validateBaseUrl(config.baseUrl, config.displayName, apiKey)
-                val url = if (base.endsWith("/v1")) "$base/models" else "$base/v1/models"
-                val request = buildBaseRequest(url, config, apiKey)
-                    .header("Accept", "application/json")
-                    .get()
-                    .build()
-                okHttpClient.newCall(request).execute().use { response ->
-                    val bodyStr = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        throw AiException(
-                            ErrorParser.fromHttpResponse(
-                                statusCode = response.code,
-                                body = bodyStr,
-                                providerName = config.displayName,
-                                modelId = "",
-                                endpointUrl = url,
-                                requestId = response.header("request-id").orEmpty(),
-                                activeApiKey = apiKey,
-                            ),
-                        )
+                val primaryUrl = if (base.endsWith("/v1", ignoreCase = true)) "$base/models" else "$base/v1/models"
+                val candidates = buildList {
+                    add(primaryUrl)
+                    if (!base.endsWith("/v1", ignoreCase = true)) {
+                        add("$base/models")
                     }
-                    val root = runCatching { json.parseToJsonElement(bodyStr) }.getOrNull()
-                    val data = when (root) {
-                        is JsonArray -> root
-                        is JsonObject -> (root["data"] as? JsonArray) ?: (root["models"] as? JsonArray) ?: JsonArray(emptyList())
-                        else -> JsonArray(emptyList())
+                }.distinct()
+
+                var lastFailure: Throwable? = null
+                for ((index, url) in candidates.withIndex()) {
+                    val attempt = runCatching {
+                        val request = buildBaseRequest(url, config, apiKey)
+                            .header("Accept", "application/json")
+                            .get()
+                            .build()
+                        okHttpClient.newCall(request).execute().use { response ->
+                            val bodyStr = response.body?.string().orEmpty()
+                            if (!response.isSuccessful) {
+                                throw AiException(
+                                    ErrorParser.fromHttpResponse(
+                                        statusCode = response.code,
+                                        body = bodyStr,
+                                        providerName = config.displayName,
+                                        modelId = "",
+                                        endpointUrl = url,
+                                        requestId = response.header("request-id").orEmpty(),
+                                        activeApiKey = apiKey,
+                                    ),
+                                )
+                            }
+                            parseAnthropicModelsJson(config.id, config.displayName, url, apiKey, bodyStr)
+                        }
                     }
-                    data.mapNotNull { elem ->
-                        val obj = elem as? JsonObject ?: return@mapNotNull null
-                        val id = (obj["id"] as? JsonPrimitive)?.contentOrNull
-                            ?: (obj["model"] as? JsonPrimitive)?.contentOrNull
-                            ?: return@mapNotNull null
-                        val display = (obj["display_name"] as? JsonPrimitive)?.contentOrNull
-                            ?: (obj["name"] as? JsonPrimitive)?.contentOrNull
-                            ?: id
-                        AiModelInfo(
-                            providerId = config.id,
-                            modelId = id,
-                            displayName = display,
-                            capabilities = CapabilityInferencer.inferCapabilities(id, display),
-                            isManual = false,
-                            ownedBy = "anthropic",
+                    if (attempt.isSuccess) {
+                        return@runCatching attempt.getOrThrow()
+                    }
+                    val err = attempt.exceptionOrNull()
+                    if (lastFailure == null) lastFailure = err
+                    val aiErr = (err as? AiException)?.aiError
+                    val hasNext = index < candidates.lastIndex
+                    val shouldRetryNext = hasNext && (
+                        aiErr?.httpStatus == 404 ||
+                            aiErr?.httpStatus == 405 ||
+                            aiErr?.category == AiErrorCategory.INVALID_BASE_URL
                         )
-                    }.distinctBy { it.modelId }.sortedBy { it.displayName.lowercase() }
+                    if (!shouldRetryNext) {
+                        throw err!!
+                    }
                 }
+                throw lastFailure ?: IllegalStateException("Failed to load models")
             }
         }
+
+    private fun parseAnthropicModelsJson(
+        providerId: String,
+        providerName: String,
+        url: String,
+        apiKey: String,
+        bodyStr: String,
+    ): List<AiModelInfo> {
+        val trimmed = bodyStr.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        val root = runCatching { json.parseToJsonElement(trimmed) }.getOrNull()
+        if (root == null) {
+            val isHtml = trimmed.startsWith("<!doctype", ignoreCase = true) ||
+                trimmed.startsWith("<html", ignoreCase = true) ||
+                trimmed.contains("cf_chl_opt")
+            val message = if (isHtml) {
+                "Server returned HTML page instead of JSON models list. Check Base URL."
+            } else {
+                "Server returned non-JSON response when fetching models."
+            }
+            throw AiException(
+                ErrorParser.fromHttpResponse(
+                    statusCode = 200,
+                    body = trimmed,
+                    providerName = providerName,
+                    modelId = "",
+                    endpointUrl = url,
+                    activeApiKey = apiKey,
+                ).copy(
+                    errorCode = if (isHtml) "HTML_RESPONSE" else "INVALID_JSON",
+                    providerMessage = message,
+                    category = AiErrorCategory.INVALID_BASE_URL,
+                ),
+            )
+        }
+        val data = when (root) {
+            is JsonArray -> root
+            is JsonObject -> (root["data"] as? JsonArray)
+                ?: (root["models"] as? JsonArray)
+                ?: (root["result"] as? JsonArray)
+                ?: JsonArray(emptyList())
+            else -> JsonArray(emptyList())
+        }
+        return data.mapNotNull { elem ->
+            val obj = elem as? JsonObject ?: return@mapNotNull null
+            val id = (obj["id"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                ?: (obj["model"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                ?: (obj["name"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return@mapNotNull null
+            val display = (obj["display_name"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                ?: (obj["displayName"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                ?: (obj["name"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                ?: id
+            AiModelInfo(
+                providerId = providerId,
+                modelId = id,
+                displayName = display,
+                capabilities = CapabilityInferencer.inferCapabilities(id, display),
+                isManual = false,
+                ownedBy = "anthropic",
+            )
+        }.distinctBy { it.modelId }.sortedBy { it.displayName.lowercase() }
+    }
 
     override fun streamChat(
         config: ProviderConfig,
@@ -603,8 +672,14 @@ class AnthropicCompatibleProvider @Inject constructor(
     }
 
     private fun normalizeBaseUrl(raw: String): String {
-        val trimmed = raw.trim().trimEnd('/')
+        var trimmed = raw.trim().trimEnd('/')
         if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return ""
+        val suffixes = listOf("/messages", "/chat/completions", "/models")
+        for (suffix in suffixes) {
+            if (trimmed.endsWith(suffix, ignoreCase = true)) {
+                trimmed = trimmed.dropLast(suffix.length).trimEnd('/')
+            }
+        }
         return trimmed
     }
 

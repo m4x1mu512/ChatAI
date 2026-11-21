@@ -87,6 +87,8 @@
     <string name="provider_models_show_all">Показать все (%1$d)</string>
     <string name="provider_models_hide">Свернуть модели</string>
     <string name="provider_models_refresh">Обновить модели</string>
+    <string name="provider_models_refresh_all">Обновить все</string>
+    <string name="provider_save_without_models">Сохранить без моделей</string>
     <string name="provider_manual_model_title">Ввести ID модели вручную</string>
     <string name="provider_manual_model_hint">напр. gpt-4o, claude-sonnet-4-5, llama3.3</string>
     <string name="provider_manual_model_note">Автоматическая загрузка списка моделей недоступна. Введите ID модели вручную.</string>
@@ -129,6 +131,11 @@
     <!-- Chat Conversation -->
     <string name="chat_select_model">Выбрать модель</string>
     <string name="chat_switch_model">Сменить модель</string>
+    <string name="chat_load_models">Загрузить модели</string>
+    <string name="chat_loading_models">Загрузка моделей…</string>
+    <string name="chat_loading_models_short">Загрузка…</string>
+    <string name="chat_models_load_failed">Не удалось загрузить модели: %1$s</string>
+    <string name="chat_no_models_for_provider">Модели для %1$s ещё не загружены</string>
     <string name="chat_input_hint">Сообщение AI…</string>
     <string name="chat_send">Отправить</string>
     <string name="chat_stop">Остановить</string>

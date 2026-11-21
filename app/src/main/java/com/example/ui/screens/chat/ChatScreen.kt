@@ -129,6 +129,7 @@ import com.example.core.model.GitHubPendingApproval
 import com.example.core.model.GitHubRepoSummary
 import com.example.core.model.MessageRole
 import com.example.core.model.MessageStatus
+import com.example.core.model.ProviderStatus
 import com.example.ui.components.ErrorReportCard
 import com.example.ui.components.InlineVideoPlayer
 import com.example.ui.components.MarkdownText
@@ -253,6 +254,10 @@ fun ChatScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.syncConnectedProviderModels()
+    }
+
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
             listState.animateScrollToItem(state.messages.lastIndex)
@@ -295,6 +300,7 @@ fun ChatScreen(
                 },
                 actions = {
                     val isUnselected = state.activeModelId.isNullOrBlank()
+                    val isRefreshingAny = state.refreshingProviderIds.isNotEmpty()
                     val pillContentColor = if (isUnselected) {
                         MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
@@ -317,7 +323,11 @@ fun ChatScreen(
                             .widthIn(max = 190.dp)
                             .clip(RoundedCornerShape(18.dp))
                             .clickable {
-                                viewModel.syncConnectedProviderModels()
+                                if (state.models.isEmpty()) {
+                                    viewModel.refreshAllProviderModels()
+                                } else {
+                                    viewModel.syncConnectedProviderModels()
+                                }
                                 showModelPicker = true
                             }
                             .testTag("model_selector_pill"),
@@ -326,12 +336,25 @@ fun ChatScreen(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            state.activeProvider?.let {
-                                ProviderLogoBadge(providerType = it.type, size = 18.dp)
+                            if (isRefreshingAny && isUnselected) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = pillContentColor,
+                                )
                                 Spacer(modifier = Modifier.width(6.dp))
+                            } else {
+                                state.activeProvider?.let {
+                                    ProviderLogoBadge(providerType = it.type, size = 18.dp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
                             }
                             Text(
-                                text = state.activeModelId ?: stringResource(R.string.chat_select_model),
+                                text = when {
+                                    !state.activeModelId.isNullOrBlank() -> state.activeModelId.orEmpty()
+                                    isRefreshingAny -> stringResource(R.string.chat_loading_models_short)
+                                    else -> stringResource(R.string.chat_select_model)
+                                },
                                 style = MaterialTheme.typography.labelMedium,
                                 color = pillContentColor,
                                 maxLines = 1,
@@ -470,6 +493,73 @@ fun ChatScreen(
                     )
                 }
 
+                val activeProvForBanner = state.activeProvider
+                if (state.messages.isNotEmpty() && activeProvForBanner != null && state.activeModelId.isNullOrBlank()) {
+                    val isRefreshingModels = activeProvForBanner.id in state.refreshingProviderIds ||
+                        state.refreshingProviderIds.isNotEmpty()
+                    val activeLoadErrMsg = state.modelLoadErrors[activeProvForBanner.id]?.providerMessage
+                        ?.takeIf { it.isNotBlank() }
+                        ?: activeProvForBanner.lastCheckMessage.takeIf {
+                            activeProvForBanner.status == ProviderStatus.ERROR && it.isNotBlank()
+                        }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (activeLoadErrMsg != null && !isRefreshingModels) {
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
+                        } else {
+                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("chat_model_load_banner"),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (isRefreshingModels) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Text(
+                                    text = stringResource(R.string.chat_loading_models),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            } else {
+                                Text(
+                                    text = if (activeLoadErrMsg != null) {
+                                        stringResource(R.string.chat_models_load_failed, activeLoadErrMsg)
+                                    } else {
+                                        stringResource(
+                                            R.string.chat_no_models_for_provider,
+                                            activeProvForBanner.displayName,
+                                        )
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (activeLoadErrMsg != null) {
+                                        MaterialTheme.colorScheme.onErrorContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    },
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(
+                                    onClick = { viewModel.refreshAllProviderModels() },
+                                    modifier = Modifier.testTag("chat_load_models_button"),
+                                ) {
+                                    Text(stringResource(R.string.chat_load_models))
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -477,6 +567,7 @@ fun ChatScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    val isChipRefreshing = state.refreshingProviderIds.isNotEmpty() && state.activeModelId.isNullOrBlank()
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = if (state.activeModelId.isNullOrBlank()) {
@@ -487,7 +578,11 @@ fun ChatScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(14.dp))
                             .clickable {
-                                viewModel.syncConnectedProviderModels()
+                                if (state.models.isEmpty()) {
+                                    viewModel.refreshAllProviderModels()
+                                } else {
+                                    viewModel.syncConnectedProviderModels()
+                                }
                                 showModelPicker = true
                             }
                             .testTag("composer_model_selector"),
@@ -497,21 +592,34 @@ fun ChatScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            state.activeProvider?.let {
-                                ProviderLogoBadge(providerType = it.type, size = 16.dp)
-                            } ?: Icon(
-                                imageVector = Icons.Outlined.Tune,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
+                            if (isChipRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                state.activeProvider?.let {
+                                    ProviderLogoBadge(providerType = it.type, size = 16.dp)
+                                } ?: Icon(
+                                    imageVector = Icons.Outlined.Tune,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                             Text(
                                 text = buildString {
                                     state.activeProvider?.let {
                                         append(it.displayName)
                                         append(" • ")
                                     }
-                                    append(state.activeModelId ?: stringResource(R.string.chat_select_model))
+                                    append(
+                                        when {
+                                            !state.activeModelId.isNullOrBlank() -> state.activeModelId.orEmpty()
+                                            isChipRefreshing -> stringResource(R.string.chat_loading_models_short)
+                                            else -> stringResource(R.string.chat_select_model)
+                                        },
+                                    )
                                 },
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -721,6 +829,13 @@ fun ChatScreen(
                     }
                 }
             } else if (state.messages.isEmpty()) {
+                val activeProv = state.activeProvider
+                val activeProvModels = remember(state.models, activeProv) {
+                    state.models.filter { it.providerId == activeProv?.id }
+                }
+                val isRefreshingActive = activeProv?.id in state.refreshingProviderIds ||
+                    (state.refreshingProviderIds.isNotEmpty() && activeProvModels.isEmpty())
+                val activeLoadErr = activeProv?.id?.let { state.modelLoadErrors[it] }
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
@@ -740,30 +855,80 @@ fun ChatScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        FilledTonalButton(
-                            onClick = {
-                                viewModel.syncConnectedProviderModels()
-                                showModelPicker = true
-                            },
-                            modifier = Modifier.testTag("empty_chat_select_model_button"),
+                        if (isRefreshingActive) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Text(
+                                    text = stringResource(R.string.chat_loading_models),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                        } else if (activeLoadErr != null && activeProvModels.isEmpty()) {
+                            ErrorReportCard(
+                                error = activeLoadErr,
+                                onCopied = {
+                                    scope.launch { snackbarHostState.showSnackbar(errorCopiedMessage) }
+                                },
+                                modifier = Modifier.widthIn(max = 480.dp),
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Tune,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = state.activeModelId ?: stringResource(R.string.chat_select_model),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Outlined.ExpandMore,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
+                            if (activeProvModels.isEmpty() || state.activeModelId.isNullOrBlank()) {
+                                Button(
+                                    onClick = { viewModel.refreshAllProviderModels() },
+                                    enabled = !isRefreshingActive,
+                                    modifier = Modifier.testTag("empty_chat_load_models_button"),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(stringResource(R.string.chat_load_models))
+                                }
+                            }
+                            FilledTonalButton(
+                                onClick = {
+                                    if (state.models.isEmpty()) {
+                                        viewModel.refreshAllProviderModels()
+                                    } else {
+                                        viewModel.syncConnectedProviderModels()
+                                    }
+                                    showModelPicker = true
+                                },
+                                modifier = Modifier.testTag("empty_chat_select_model_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Tune,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = state.activeModelId ?: stringResource(R.string.chat_select_model),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Outlined.ExpandMore,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -834,9 +999,11 @@ fun ChatScreen(
             selectedProviderId = state.activeProvider?.id,
             selectedModelId = state.activeModelId,
             refreshingProviderIds = state.refreshingProviderIds,
+            modelLoadErrors = state.modelLoadErrors,
             onSelectModel = viewModel::selectModel,
             onAddManualModel = viewModel::addManualModel,
             onRefreshModels = viewModel::refreshProviderModels,
+            onRefreshAll = viewModel::refreshAllProviderModels,
             onOpenProviders = onOpenProviders,
             onDismiss = { showModelPicker = false },
         )

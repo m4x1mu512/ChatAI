@@ -1,5 +1,6 @@
 package com.example.data.network
 
+import com.example.core.model.AiModelInfo
 import com.example.core.model.ApiProtocol
 import com.example.core.model.ProviderConfig
 import com.example.core.model.ProviderType
@@ -56,5 +57,29 @@ class AiProviderRegistry @Inject constructor(
         val secondary = if (primary === anthropicProvider) openAiProvider else anthropicProvider
         val secondaryResult = secondary.testConnection(config, apiKey)
         return if (secondaryResult.success) secondaryResult else primaryResult
+    }
+
+    suspend fun fetchModelsWithAutoDetect(
+        config: ProviderConfig,
+        apiKey: String,
+    ): Pair<ApiProtocol, Result<List<AiModelInfo>>> {
+        if (config.protocol != ApiProtocol.AUTO) {
+            val provider = getProvider(config)
+            return provider.protocol to provider.fetchModels(config, apiKey)
+        }
+        val heuristic = resolveProtocol(config)
+        val primary = if (heuristic == ApiProtocol.ANTHROPIC_COMPATIBLE) anthropicProvider else openAiProvider
+        val primaryResult = primary.fetchModels(config, apiKey)
+        if (primaryResult.isSuccess) {
+            return primary.protocol to primaryResult
+        }
+
+        val secondary = if (primary === anthropicProvider) openAiProvider else anthropicProvider
+        val secondaryResult = secondary.fetchModels(config, apiKey)
+        return if (secondaryResult.isSuccess) {
+            secondary.protocol to secondaryResult
+        } else {
+            primary.protocol to primaryResult
+        }
     }
 }

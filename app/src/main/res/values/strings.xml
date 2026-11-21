@@ -87,6 +87,8 @@
     <string name="provider_models_show_all">Show all (%1$d)</string>
     <string name="provider_models_hide">Hide models</string>
     <string name="provider_models_refresh">Refresh models</string>
+    <string name="provider_models_refresh_all">Refresh All</string>
+    <string name="provider_save_without_models">Save Without Models</string>
     <string name="provider_manual_model_title">Add Model ID Manually</string>
     <string name="provider_manual_model_hint">e.g. gpt-4o, claude-sonnet-4-5, llama3.3</string>
     <string name="provider_manual_model_note">Automatic model listing is unavailable for this endpoint. Enter a model ID manually.</string>
@@ -129,6 +131,11 @@
     <!-- Chat Conversation -->
     <string name="chat_select_model">Select Model</string>
     <string name="chat_switch_model">Change Model</string>
+    <string name="chat_load_models">Load Models</string>
+    <string name="chat_loading_models">Loading models…</string>
+    <string name="chat_loading_models_short">Loading…</string>
+    <string name="chat_models_load_failed">Could not load models: %1$s</string>
+    <string name="chat_no_models_for_provider">No models loaded for %1$s yet</string>
     <string name="chat_input_hint">Message AI…</string>
     <string name="chat_send">Send</string>
     <string name="chat_stop">Stop</string>

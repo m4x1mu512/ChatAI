@@ -457,6 +457,16 @@ fun ProviderConfigScreen(
                                 scope.launch { snackbarHostState.showSnackbar(copiedText) }
                             },
                         )
+                        if (state.isExisting && state.models.isEmpty()) {
+                            OutlinedButton(
+                                onClick = { viewModel.saveAndFetchModels(onSaved = onBack) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("save_without_models_button"),
+                            ) {
+                                Text(stringResource(R.string.provider_save_without_models))
+                            }
+                        }
                     }
                 }
             }

@@ -77,7 +77,11 @@ class ProviderRepository @Inject constructor(
         }
         val activeKey = secureKeyStore.getApiKey(id)
         val hasKey = activeKey.isNotBlank()
-        val resolved = providerRegistry.resolveProtocol(config)
+        val resolved = if (config.protocol == ApiProtocol.AUTO && config.resolvedProtocol != ApiProtocol.AUTO) {
+            config.resolvedProtocol
+        } else {
+            providerRegistry.resolveProtocol(config)
+        }
         val updated = config.copy(
             id = id,
             resolvedProtocol = resolved,
@@ -122,25 +126,41 @@ class ProviderRepository @Inject constructor(
         return result
     }
 
-    suspend fun syncMissingModelsForConnectedProviders() {
+    suspend fun syncMissingModelsForConnectedProviders(): Map<String, Result<List<AiModelInfo>>> =
+        syncModelsForProviders(onlyIfEmpty = true)
+
+    suspend fun syncModelsForProviders(
+        targetProviderIds: List<String>? = null,
+        onlyIfEmpty: Boolean = true,
+    ): Map<String, Result<List<AiModelInfo>>> {
         val providers = providerDao.getAllProviders()
+        val results = linkedMapOf<String, Result<List<AiModelInfo>>>()
         for (entity in providers) {
+            if (targetProviderIds != null && entity.id !in targetProviderIds) continue
             if (!entity.isEnabled) continue
-            val isConnectedOrConfigured = entity.status == ProviderStatus.CONNECTED.name ||
-                secureKeyStore.hasApiKey(entity.id)
-            if (!isConnectedOrConfigured) continue
-            if (modelDao.getModelCountForProvider(entity.id) == 0) {
-                runCatching { fetchAndStoreModels(entity.id) }
+            val domain = entity.toDomain(
+                hasApiKey = secureKeyStore.hasApiKey(entity.id),
+                maskedApiKey = secureKeyStore.getMaskedApiKey(entity.id),
+            )
+            val isExplicitTarget = targetProviderIds != null
+            val isReady = isExplicitTarget ||
+                domain.status == ProviderStatus.CONNECTED ||
+                domain.hasApiKey ||
+                !domain.type.requiresApiKey ||
+                domain.customHeaders.isNotEmpty()
+            if (!isReady) continue
+            if (!onlyIfEmpty || modelDao.getModelCountForProvider(entity.id) == 0) {
+                results[entity.id] = fetchAndStoreModels(entity.id)
             }
         }
+        return results
     }
 
     suspend fun fetchAndStoreModels(providerId: String): Result<List<AiModelInfo>> {
         val provider = getProvider(providerId)
             ?: return Result.failure(IllegalArgumentException("Provider not found"))
         val apiKey = secureKeyStore.getApiKey(providerId)
-        val impl = providerRegistry.getProvider(provider)
-        val result = impl.fetchModels(provider, apiKey)
+        val (usedProtocol, result) = providerRegistry.fetchModelsWithAutoDetect(provider, apiKey)
 
         return result.map { fetched ->
             val merged = mergeExistingSelections(providerId, fetched)
@@ -152,6 +172,7 @@ class ProviderRepository @Inject constructor(
                 ?: merged.firstOrNull()?.modelId
             providerDao.upsertProvider(
                 provider.copy(
+                    resolvedProtocol = usedProtocol,
                     status = ProviderStatus.CONNECTED,
                     lastCheckedAt = System.currentTimeMillis(),
                     lastCheckMessage = "Models synced (${merged.size})",
@@ -183,7 +204,7 @@ class ProviderRepository @Inject constructor(
 
     private suspend fun mergeExistingSelections(providerId: String, fetched: List<AiModelInfo>): List<AiModelInfo> {
         val existing = modelDao.getModelsForProviderSnapshot(providerId)
-        if (existing.isEmpty()) return fetched
+        if (existing.isEmpty() || existing.none { it.isEnabled }) return fetched
         val existingMap = existing.associate { it.modelId to it.isEnabled }
         val hasCuratedSubset = existing.any { !it.isEnabled }
         return fetched.map { model ->

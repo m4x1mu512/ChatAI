@@ -461,7 +461,17 @@ private fun ConfiguredProviderCard(
                         )
                     }
                 }
-            } else if (provider.status == ProviderStatus.CONNECTED || provider.hasApiKey) {
+            } else if (provider.isEnabled) {
+                if (provider.status == ProviderStatus.ERROR && provider.lastCheckMessage.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = provider.lastCheckMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 TextButton(
                     onClick = onRefreshModels,

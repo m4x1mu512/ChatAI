@@ -31,6 +31,7 @@ data class ProviderEditorState(
     val type: ProviderType = ProviderType.OPENAI,
     val displayName: String = ProviderType.OPENAI.defaultDisplayName,
     val protocol: ApiProtocol = ProviderType.OPENAI.defaultProtocol,
+    val resolvedProtocol: ApiProtocol = ProviderType.OPENAI.defaultProtocol,
     val baseUrl: String = ProviderType.OPENAI.defaultBaseUrl,
     val apiKeyInput: String = "",
     val hasExistingKey: Boolean = false,
@@ -91,6 +92,11 @@ class ProvidersViewModel @Inject constructor(
             type = type,
             displayName = type.defaultDisplayName,
             protocol = type.defaultProtocol,
+            resolvedProtocol = if (type.defaultProtocol == ApiProtocol.AUTO) {
+                ApiProtocol.OPENAI_COMPATIBLE
+            } else {
+                type.defaultProtocol
+            },
             baseUrl = type.defaultBaseUrl,
         )
     }
@@ -106,6 +112,7 @@ class ProvidersViewModel @Inject constructor(
                 type = config.type,
                 displayName = config.displayName,
                 protocol = config.protocol,
+                resolvedProtocol = config.resolvedProtocol,
                 baseUrl = config.baseUrl,
                 apiKeyInput = rawKey,
                 hasExistingKey = config.hasApiKey,
@@ -119,13 +126,43 @@ class ProvidersViewModel @Inject constructor(
                 lastCheckMessage = config.lastCheckMessage,
                 selectedModelId = config.selectedModelId,
             )
-            launch {
-                if (config.isEnabled && (config.status == ProviderStatus.CONNECTED || config.hasApiKey)) {
-                    providerRepository.syncMissingModelsForConnectedProviders()
-                }
-            }
+            var didTriggerAutoFetch = false
             providerRepository.observeModelsForProvider(providerId).collect { models ->
                 _editorState.value = _editorState.value.copy(models = models)
+                if (!didTriggerAutoFetch &&
+                    models.isEmpty() &&
+                    config.isEnabled &&
+                    (config.status == ProviderStatus.CONNECTED || config.hasApiKey || !config.type.requiresApiKey)
+                ) {
+                    didTriggerAutoFetch = true
+                    launch {
+                        _editorState.value = _editorState.value.copy(isFetchingModels = true)
+                        providerRepository.fetchAndStoreModels(providerId).onSuccess { loaded ->
+                            val updated = providerRepository.getProvider(providerId)
+                            _editorState.value = _editorState.value.copy(
+                                isFetchingModels = false,
+                                status = updated?.status ?: ProviderStatus.CONNECTED,
+                                resolvedProtocol = updated?.resolvedProtocol ?: _editorState.value.resolvedProtocol,
+                                lastCheckedAt = updated?.lastCheckedAt ?: System.currentTimeMillis(),
+                                lastCheckMessage = updated?.lastCheckMessage.orEmpty(),
+                                selectedModelId = updated?.selectedModelId ?: loaded.firstOrNull()?.modelId,
+                                showManualModelPrompt = loaded.isEmpty(),
+                            )
+                        }.onFailure { err ->
+                            val parsed = ErrorParser.fromThrowable(
+                                err,
+                                providerName = config.displayName,
+                                endpointUrl = config.baseUrl,
+                                activeApiKey = rawKey,
+                            )
+                            _editorState.value = _editorState.value.copy(
+                                isFetchingModels = false,
+                                checkError = parsed,
+                                showManualModelPrompt = true,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -135,15 +172,15 @@ class ProvidersViewModel @Inject constructor(
     }
 
     fun updateProtocol(protocol: ApiProtocol) {
-        _editorState.value = _editorState.value.copy(protocol = protocol)
+        _editorState.value = _editorState.value.copy(protocol = protocol, checkError = null)
     }
 
     fun updateBaseUrl(url: String) {
-        _editorState.value = _editorState.value.copy(baseUrl = url)
+        _editorState.value = _editorState.value.copy(baseUrl = url, checkError = null)
     }
 
     fun updateApiKey(key: String) {
-        _editorState.value = _editorState.value.copy(apiKeyInput = key)
+        _editorState.value = _editorState.value.copy(apiKeyInput = key, checkError = null)
     }
 
     fun updateOrganizationId(org: String) {
@@ -209,6 +246,7 @@ class ProvidersViewModel @Inject constructor(
                 isTesting = false,
                 checkResult = result,
                 checkError = result.error,
+                resolvedProtocol = result.resolvedProtocol,
                 status = if (result.success) ProviderStatus.CONNECTED else ProviderStatus.ERROR,
                 lastCheckedAt = System.currentTimeMillis(),
                 lastCheckMessage = result.message,
@@ -227,7 +265,12 @@ class ProvidersViewModel @Inject constructor(
             ?: existingModels.firstOrNull { it.isEnabled }?.modelId
         val draftConfig = buildDraftConfig(state.copy(selectedModelId = chosenDefault))
         viewModelScope.launch {
-            _editorState.value = state.copy(isSaving = true, isFetchingModels = existingModels.isEmpty(), checkError = null)
+            val skipRetryFetch = state.checkError != null && state.isExisting
+            _editorState.value = state.copy(
+                isSaving = true,
+                isFetchingModels = existingModels.isEmpty() && !skipRetryFetch,
+                checkError = if (skipRetryFetch) state.checkError else null,
+            )
             val saved = providerRepository.saveProvider(
                 config = draftConfig,
                 newApiKey = state.apiKeyInput,
@@ -240,7 +283,18 @@ class ProvidersViewModel @Inject constructor(
                     isSaving = false,
                     isFetchingModels = false,
                     isExisting = true,
+                    resolvedProtocol = saved.resolvedProtocol,
                     selectedModelId = chosenDefault,
+                )
+                onSaved()
+                return@launch
+            }
+            if (skipRetryFetch) {
+                settingsDataStore.setOnboardingCompleted(true)
+                _editorState.value = _editorState.value.copy(
+                    isSaving = false,
+                    isFetchingModels = false,
+                    isExisting = true,
                 )
                 onSaved()
                 return@launch
@@ -250,7 +304,8 @@ class ProvidersViewModel @Inject constructor(
             settingsDataStore.setOnboardingCompleted(true)
             fetchRes.fold(
                 onSuccess = { models ->
-                    val enabledDefault = saved.selectedModelId
+                    val refreshed = providerRepository.getProvider(saved.id)
+                    val enabledDefault = refreshed?.selectedModelId
                         ?.takeIf { sel -> models.any { it.modelId == sel && it.isEnabled } }
                         ?: models.firstOrNull { it.isEnabled }?.modelId
                         ?: models.firstOrNull()?.modelId
@@ -259,6 +314,7 @@ class ProvidersViewModel @Inject constructor(
                         isFetchingModels = false,
                         isExisting = true,
                         models = models,
+                        resolvedProtocol = refreshed?.resolvedProtocol ?: saved.resolvedProtocol,
                         status = ProviderStatus.CONNECTED,
                         lastCheckedAt = System.currentTimeMillis(),
                         lastCheckMessage = "Models synced (${models.size})",
@@ -267,18 +323,24 @@ class ProvidersViewModel @Inject constructor(
                     )
                     onSaved()
                 },
-                onFailure = {
+                onFailure = { throwable ->
                     val refreshed = providerRepository.getProvider(saved.id)
+                    val parsedErr = ErrorParser.fromThrowable(
+                        throwable,
+                        providerName = saved.displayName,
+                        endpointUrl = saved.baseUrl,
+                        activeApiKey = state.apiKeyInput,
+                    )
                     _editorState.value = _editorState.value.copy(
                         isSaving = false,
                         isFetchingModels = false,
                         isExisting = true,
                         status = refreshed?.status ?: ProviderStatus.ERROR,
                         lastCheckedAt = System.currentTimeMillis(),
-                        lastCheckMessage = refreshed?.lastCheckMessage.orEmpty(),
+                        lastCheckMessage = refreshed?.lastCheckMessage ?: parsedErr.providerMessage,
+                        checkError = parsedErr,
                         showManualModelPrompt = true,
                     )
-                    onSaved()
                 },
             )
         }
@@ -297,7 +359,8 @@ class ProvidersViewModel @Inject constructor(
             val res = providerRepository.fetchAndStoreModels(saved.id)
             res.fold(
                 onSuccess = { models ->
-                    val enabledDefault = saved.selectedModelId
+                    val refreshed = providerRepository.getProvider(saved.id)
+                    val enabledDefault = refreshed?.selectedModelId
                         ?.takeIf { sel -> models.any { it.modelId == sel && it.isEnabled } }
                         ?: models.firstOrNull { it.isEnabled }?.modelId
                         ?: models.firstOrNull()?.modelId
@@ -305,6 +368,7 @@ class ProvidersViewModel @Inject constructor(
                         isFetchingModels = false,
                         isExisting = true,
                         models = models,
+                        resolvedProtocol = refreshed?.resolvedProtocol ?: saved.resolvedProtocol,
                         status = ProviderStatus.CONNECTED,
                         lastCheckedAt = System.currentTimeMillis(),
                         lastCheckMessage = "Models synced (${models.size})",
@@ -461,6 +525,7 @@ class ProvidersViewModel @Inject constructor(
             type = state.type,
             displayName = state.displayName.trim().ifBlank { state.type.defaultDisplayName },
             protocol = state.protocol,
+            resolvedProtocol = state.resolvedProtocol,
             baseUrl = state.baseUrl.trim(),
             organizationId = state.organizationId.trim(),
             projectId = state.projectId.trim(),

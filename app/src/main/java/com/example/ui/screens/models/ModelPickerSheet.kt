@@ -51,6 +51,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.core.error.AiError
 import com.example.core.model.AiModelInfo
 import com.example.core.model.ProviderConfig
 import com.example.core.model.ProviderStatus
@@ -65,9 +66,11 @@ fun ModelPickerSheet(
     selectedProviderId: String?,
     selectedModelId: String?,
     refreshingProviderIds: Set<String> = emptySet(),
+    modelLoadErrors: Map<String, AiError> = emptyMap(),
     onSelectModel: (ProviderConfig, AiModelInfo) -> Unit,
     onAddManualModel: (providerId: String, modelId: String) -> Unit,
     onRefreshModels: ((providerId: String) -> Unit)? = null,
+    onRefreshAll: (() -> Unit)? = null,
     onOpenProviders: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
@@ -78,16 +81,12 @@ fun ModelPickerSheet(
     var manualModelText by remember { mutableStateOf("") }
 
     val enabledProviders = remember(providers, models) {
-        providers.filter { provider ->
-            provider.isEnabled && (
-                provider.status == ProviderStatus.CONNECTED ||
-                    provider.hasApiKey ||
-                    !provider.type.requiresApiKey ||
-                    models.any { it.providerId == provider.id }
-                )
-        }.ifEmpty {
-            providers.filter { it.isEnabled }
-        }
+        providers.filter { it.isEnabled }
+            .sortedWith(
+                compareByDescending<ProviderConfig> { p -> models.any { it.providerId == p.id } }
+                    .thenByDescending { it.status == ProviderStatus.CONNECTED }
+                    .thenBy { it.sortOrder },
+            )
     }
     val visibleProviders = remember(enabledProviders, filterProviderId) {
         if (filterProviderId == null) {
@@ -116,13 +115,43 @@ fun ModelPickerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 600.dp)
+                .heightIn(max = 620.dp)
                 .padding(horizontal = 16.dp),
         ) {
-            Text(
-                text = stringResource(R.string.models_picker_title),
-                style = MaterialTheme.typography.titleLarge,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.models_picker_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                if (onRefreshAll != null && enabledProviders.isNotEmpty()) {
+                    val isAnyRefreshing = refreshingProviderIds.isNotEmpty()
+                    TextButton(
+                        onClick = onRefreshAll,
+                        enabled = !isAnyRefreshing,
+                        modifier = Modifier.testTag("model_picker_refresh_all"),
+                    ) {
+                        if (isAnyRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Outlined.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.provider_models_refresh_all))
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedTextField(
                 value = searchQuery,
@@ -261,23 +290,95 @@ fun ModelPickerSheet(
 
                         if (providerModels.isEmpty() && searchQuery.isBlank()) {
                             item(key = "empty_${provider.id}") {
-                                Row(
-                                    modifier = Modifier.padding(start = 34.dp, bottom = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.provider_manual_model_note),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    if (onRefreshModels != null) {
-                                        TextButton(
-                                            onClick = { onRefreshModels(provider.id) },
-                                            enabled = provider.id !in refreshingProviderIds,
+                                val isRefreshing = provider.id in refreshingProviderIds
+                                val loadErr = modelLoadErrors[provider.id]
+                                val errMsg = loadErr?.providerMessage?.takeIf { it.isNotBlank() }
+                                    ?: provider.lastCheckMessage.takeIf {
+                                        provider.status == ProviderStatus.ERROR && it.isNotBlank()
+                                    }
+
+                                when {
+                                    isRefreshing -> {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 34.dp, top = 4.dp, bottom = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                                         ) {
-                                            Text(stringResource(R.string.provider_fetch_models))
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp,
+                                            )
+                                            Text(
+                                                text = stringResource(R.string.chat_loading_models),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                    errMsg != null -> {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 8.dp, bottom = 4.dp),
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                            ) {
+                                                Text(
+                                                    text = stringResource(R.string.chat_models_load_failed, errMsg),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                                )
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                ) {
+                                                    if (onRefreshModels != null) {
+                                                        TextButton(
+                                                            onClick = { onRefreshModels(provider.id) },
+                                                            modifier = Modifier.testTag("retry_provider_models_${provider.id}"),
+                                                        ) {
+                                                            Text(stringResource(R.string.action_retry))
+                                                        }
+                                                    }
+                                                    if (onOpenProviders != null) {
+                                                        TextButton(
+                                                            onClick = {
+                                                                onDismiss()
+                                                                onOpenProviders()
+                                                            },
+                                                        ) {
+                                                            Text(stringResource(R.string.providers_configure))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else -> {
+                                        Row(
+                                            modifier = Modifier.padding(start = 34.dp, bottom = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.provider_manual_model_note),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            if (onRefreshModels != null) {
+                                                TextButton(
+                                                    onClick = { onRefreshModels(provider.id) },
+                                                    modifier = Modifier.testTag("fetch_models_provider_${provider.id}"),
+                                                ) {
+                                                    Text(stringResource(R.string.chat_load_models))
+                                                }
+                                            }
                                         }
                                     }
                                 }
