@@ -17,6 +17,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -114,6 +115,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -374,15 +376,24 @@ fun ChatScreen(
             )
         },
         bottomBar = {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
                     .navigationBarsPadding()
-                    .imePadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                    .imePadding(),
             ) {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val availableHeight = if (maxHeight != Dp.Infinity) maxHeight else 520.dp
+                    val minApprovalHeight = minOf(150.dp, availableHeight * 0.45f)
+                    val approvalMaxHeight = (availableHeight * 0.52f).coerceIn(minApprovalHeight, 360.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = availableHeight)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                 if (state.isLoadingAttachment) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
@@ -488,8 +499,10 @@ fun ChatScreen(
                 state.pendingGitHubApproval?.let { approval ->
                     GitHubApprovalBannerCard(
                         approval = approval,
+                        maxCardHeight = approvalMaxHeight,
                         onApprove = viewModel::approvePendingGitHubWrite,
                         onReject = viewModel::rejectPendingGitHubWrite,
+                        modifier = Modifier.weight(1f, fill = false),
                     )
                 }
 
@@ -795,6 +808,8 @@ fun ChatScreen(
                         }
                     }
                 }
+            }
+            }
             }
         },
     ) { innerPadding ->
@@ -1429,24 +1444,31 @@ private fun MessageStatusLabel(status: MessageStatus) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun GitHubApprovalBannerCard(
+internal fun GitHubApprovalBannerCard(
     approval: GitHubPendingApproval,
     onApprove: () -> Unit,
     onReject: () -> Unit,
+    modifier: Modifier = Modifier,
+    maxCardHeight: Dp = 360.dp,
 ) {
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .heightIn(max = maxCardHeight)
             .testTag("github_approval_card"),
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -1460,57 +1482,93 @@ private fun GitHubApprovalBannerCard(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                if (approval.actions.size > 1) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.14f),
+                    ) {
+                        Text(
+                            text = "${approval.actions.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
+                }
             }
 
-            approval.actions.forEach { action ->
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        text = action.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    )
-                    Text(
-                        text = action.summary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
-                    )
-                    if (action.previewContent.isNotBlank()) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 120.dp),
-                        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                approval.actions.forEach { action ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = action.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                        if (action.summary.isNotBlank()) {
                             Text(
-                                text = action.previewContent,
+                                text = action.summary,
                                 style = MaterialTheme.typography.bodySmall,
-                                fontFamily = FontFamily.Monospace,
-                                modifier = Modifier
-                                    .padding(8.dp)
-                                    .verticalScroll(rememberScrollState())
-                                    .horizontalScroll(rememberScrollState()),
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
                             )
+                        }
+                        if (action.previewContent.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 160.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
+                                        .horizontalScroll(rememberScrollState())
+                                        .padding(8.dp),
+                                ) {
+                                    Text(
+                                        text = action.previewContent,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlinedButton(
                     onClick = onReject,
-                    modifier = Modifier.testTag("github_approval_reject"),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("github_approval_reject"),
                 ) {
                     Text(stringResource(R.string.github_approval_reject))
                 }
                 Button(
                     onClick = onApprove,
-                    modifier = Modifier.testTag("github_approval_confirm"),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("github_approval_confirm"),
                 ) {
                     Text(stringResource(R.string.github_approval_approve))
                 }
