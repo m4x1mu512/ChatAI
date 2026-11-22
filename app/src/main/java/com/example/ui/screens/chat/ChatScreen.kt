@@ -886,9 +886,9 @@ fun ChatScreen(
                             )
                         },
                         maxLines = 5,
-                        shape = RoundedCornerShape(22.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             focusedBorderColor = MaterialTheme.colorScheme.primary,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
@@ -1284,22 +1284,24 @@ private fun ChatMessageBubble(
 
         Surface(
             shape = RoundedCornerShape(
-                topStart = 18.dp,
-                topEnd = 18.dp,
-                bottomStart = if (isUser) 18.dp else 4.dp,
-                bottomEnd = if (isUser) 4.dp else 18.dp,
+                topStart = 14.dp,
+                topEnd = 14.dp,
+                bottomStart = if (isUser) 14.dp else 4.dp,
+                bottomEnd = if (isUser) 4.dp else 14.dp,
             ),
+            // Chatbox keeps assistant answers on the page canvas and gives user prompts
+            // a quiet neutral bubble instead of a strongly tinted accent surface.
             color = if (isUser) {
-                MaterialTheme.colorScheme.primaryContainer
+                MaterialTheme.colorScheme.surfaceContainerLow
             } else {
-                MaterialTheme.colorScheme.surface
+                MaterialTheme.colorScheme.background
             },
             border = BorderStroke(
                 width = 1.dp,
                 color = if (isUser) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                } else {
                     MaterialTheme.colorScheme.outlineVariant
+                } else {
+                    MaterialTheme.colorScheme.background
                 },
             ),
             tonalElevation = 0.dp,
@@ -1437,7 +1439,7 @@ private fun ChatMessageBubble(
                         Text(
                             text = message.content,
                             style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     } else {
                         MarkdownText(
