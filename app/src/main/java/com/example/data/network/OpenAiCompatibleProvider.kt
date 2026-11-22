@@ -116,9 +116,11 @@ class OpenAiCompatibleProvider @Inject constructor(
         }
 
     private fun probeChatEndpoint(config: ProviderConfig, base: String, apiKey: String): ConnectionCheckResult {
-        val url = "$base/chat/completions"
+        val chatBase = resolveOpenAiBaseUrl(config, base)
+        val url = "$chatBase/chat/completions"
+        val probeModel = normalizeModelIdForRequest(config, chatBase, config.selectedModelId ?: "probe")
         val payload = buildJsonObject {
-            put("model", config.selectedModelId ?: "probe")
+            put("model", probeModel)
             put("max_tokens", 1)
             put("messages", buildJsonArray {
                 addJsonObject {
@@ -170,7 +172,15 @@ class OpenAiCompatibleProvider @Inject constructor(
                 for ((index, url) in candidates.withIndex()) {
                     val attempt = runCatching {
                         val bodyStr = executeModelsGet(url, config, apiKey)
-                        validateAndParseModels(config.id, config.displayName, url, apiKey, bodyStr)
+                        val isGemini = isGeminiOpenAiEndpoint(config, url)
+                        validateAndParseModels(
+                            providerId = config.id,
+                            providerName = config.displayName,
+                            url = url,
+                            apiKey = apiKey,
+                            bodyStr = bodyStr,
+                            stripModelsPrefix = isGemini,
+                        )
                     }
                     if (attempt.isSuccess) {
                         return@runCatching attempt.getOrThrow()
@@ -200,6 +210,7 @@ class OpenAiCompatibleProvider @Inject constructor(
         url: String,
         apiKey: String,
         bodyStr: String,
+        stripModelsPrefix: Boolean = false,
     ): List<AiModelInfo> {
         val trimmed = bodyStr.trim()
         if (trimmed.isEmpty()) return emptyList()
@@ -228,7 +239,7 @@ class OpenAiCompatibleProvider @Inject constructor(
                 ),
             )
         }
-        return parseModelsJson(providerId, trimmed)
+        return parseModelsJson(providerId, trimmed, stripModelsPrefix = stripModelsPrefix)
     }
 
     private fun executeModelsGet(url: String, config: ProviderConfig, apiKey: String): String {
@@ -261,6 +272,39 @@ class OpenAiCompatibleProvider @Inject constructor(
     companion object {
         private val modelsJsonParser = Json { ignoreUnknownKeys = true }
         private val CLOUDFLARE_AI_V1_REGEX = Regex("""(?i)^(https?://api\.cloudflare\.com/client/v4/accounts/[^/]+/ai)/v1$""")
+
+        internal fun isGeminiOpenAiEndpoint(config: ProviderConfig, baseOrUrl: String): Boolean =
+            config.type == ProviderType.GOOGLE_GEMINI ||
+                baseOrUrl.contains("generativelanguage.googleapis.com", ignoreCase = true)
+
+        internal fun normalizeModelIdForRequest(
+            config: ProviderConfig,
+            baseOrUrl: String,
+            modelId: String,
+        ): String {
+            val trimmed = modelId.trim()
+            return if (isGeminiOpenAiEndpoint(config, baseOrUrl)) {
+                trimmed.removePrefix("models/")
+            } else {
+                trimmed
+            }
+        }
+
+        internal fun resolveOpenAiBaseUrl(config: ProviderConfig, normalizedBase: String): String {
+            if (isGeminiOpenAiEndpoint(config, normalizedBase) &&
+                normalizedBase.contains("generativelanguage.googleapis.com", ignoreCase = true) &&
+                !normalizedBase.endsWith("/openai", ignoreCase = true)
+            ) {
+                return if (normalizedBase.endsWith("/v1beta", ignoreCase = true) ||
+                    normalizedBase.endsWith("/v1", ignoreCase = true)
+                ) {
+                    "$normalizedBase/openai"
+                } else {
+                    "$normalizedBase/v1beta/openai"
+                }
+            }
+            return normalizedBase
+        }
 
         internal fun resolveModelsEndpointUrl(config: ProviderConfig, normalizedBase: String): String {
             val cfMatch = CLOUDFLARE_AI_V1_REGEX.matchEntire(normalizedBase)
@@ -327,7 +371,11 @@ class OpenAiCompatibleProvider @Inject constructor(
             "text-to-speech",
         )
 
-        internal fun parseModelsJson(providerId: String, bodyStr: String): List<AiModelInfo> {
+        internal fun parseModelsJson(
+            providerId: String,
+            bodyStr: String,
+            stripModelsPrefix: Boolean = false,
+        ): List<AiModelInfo> {
             val root = runCatching { modelsJsonParser.parseToJsonElement(bodyStr) }.getOrNull() ?: return emptyList()
             val array: JsonArray = when (root) {
                 is JsonArray -> root
@@ -355,8 +403,10 @@ class OpenAiCompatibleProvider @Inject constructor(
             return array.mapNotNull { element ->
                 when (element) {
                     is JsonPrimitive -> {
-                        val id = element.contentOrNull?.trim().orEmpty()
+                        val raw = element.contentOrNull?.trim().orEmpty()
+                        val id = if (stripModelsPrefix) raw.removePrefix("models/") else raw
                         if (id.isEmpty()) return@mapNotNull null
+                        if (stripModelsPrefix && isNonGenerativeGeminiModel(id)) return@mapNotNull null
                         AiModelInfo(
                             providerId = providerId,
                             modelId = id,
@@ -380,7 +430,7 @@ class OpenAiCompatibleProvider @Inject constructor(
                             return@mapNotNull null
                         }
 
-                        val id = if (isCloudflareSchema && rawName != null) {
+                        val baseId = if (isCloudflareSchema && rawName != null) {
                             rawName
                         } else {
                             rawId
@@ -389,10 +439,15 @@ class OpenAiCompatibleProvider @Inject constructor(
                                 ?: rawSlug
                                 ?: return@mapNotNull null
                         }
-                        val display = (element["display_name"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                        val id = if (stripModelsPrefix) baseId.removePrefix("models/") else baseId
+                        if (id.isEmpty()) return@mapNotNull null
+                        if (stripModelsPrefix && isNonGenerativeGeminiModel(id)) return@mapNotNull null
+
+                        val rawDisplay = (element["display_name"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
                             ?: (element["displayName"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
                             ?: rawName
                             ?: id
+                        val display = if (stripModelsPrefix) rawDisplay.removePrefix("models/") else rawDisplay
                         val ownedBy = (element["owned_by"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
                             ?: (element["provider"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
                             ?: if (isCloudflareSchema) "cloudflare" else ""
@@ -423,6 +478,11 @@ class OpenAiCompatibleProvider @Inject constructor(
                 }
             }.distinctBy { it.modelId }.sortedBy { it.displayName.lowercase() }
         }
+
+        private fun isNonGenerativeGeminiModel(modelId: String): Boolean {
+            val lower = modelId.lowercase().removePrefix("models/")
+            return lower.contains("embedding") || lower == "aqa"
+        }
     }
 
     override fun streamChat(
@@ -436,7 +496,10 @@ class OpenAiCompatibleProvider @Inject constructor(
             emit(StreamEvent.Failure(e.aiError))
             return@flow
         }
-        val endpointUrl = "$base/chat/completions"
+        val chatBase = resolveOpenAiBaseUrl(config, base)
+        val endpointUrl = "$chatBase/chat/completions"
+        val isGemini = isGeminiOpenAiEndpoint(config, chatBase)
+        val effectiveModelId = normalizeModelIdForRequest(config, chatBase, request.modelId)
 
         val messagesJson = buildJsonArray {
             if (request.systemPrompt.isNotBlank()) {
@@ -447,61 +510,89 @@ class OpenAiCompatibleProvider @Inject constructor(
             }
             if (request.toolConversationHistory.isNotEmpty()) {
                 for (item in request.toolConversationHistory) {
-                    add(buildConversationItemJson(item))
+                    buildConversationItemJson(item, includeToolName = isGemini)?.let { add(it) }
                 }
             } else {
                 for (msg in request.messages) {
-                    add(buildMessageJson(msg))
+                    buildMessageJson(msg)?.let { add(it) }
                 }
             }
         }
 
-        val payload = buildJsonObject {
-            put("model", request.modelId)
-            put("messages", messagesJson)
-            put("stream", request.stream)
-            put("temperature", request.temperature.toDouble())
-            put("max_tokens", request.maxTokens)
-            if (request.tools.isNotEmpty()) {
-                put(
-                    "tools",
-                    buildJsonArray {
-                        for (tool in request.tools) {
-                            addJsonObject {
-                                put("type", "function")
-                                putJsonObject("function") {
-                                    put("name", tool.name)
-                                    put("description", tool.description)
-                                    put("parameters", tool.parametersSchema)
-                                }
-                            }
-                        }
-                    },
-                )
-                put("tool_choice", "auto")
-            }
-        }.toString()
+        val primaryPayload = buildChatPayload(
+            modelId = effectiveModelId,
+            messagesJson = messagesJson,
+            stream = request.stream,
+            temperature = request.temperature,
+            maxTokens = request.maxTokens,
+            tools = request.tools,
+            includeOptionalSampling = true,
+        )
 
-        val httpRequest = buildBaseRequest(endpointUrl, config, apiKey)
+        var httpRequest = buildBaseRequest(endpointUrl, config, apiKey)
             .header("Accept", if (request.stream) "text/event-stream" else "application/json")
-            .post(payload.toRequestBody(jsonMediaType))
+            .post(primaryPayload.toRequestBody(jsonMediaType))
             .build()
 
-        val call = okHttpClient.newCall(httpRequest)
+        var usedStreaming = request.stream
+        var call = okHttpClient.newCall(httpRequest)
         try {
-            call.execute().use { response ->
-                val requestId = response.header("x-request-id")
-                    ?: response.header("cf-ray")
-                    ?: ""
+            var response = call.execute()
+            if (!response.isSuccessful && response.code == 400 && isGemini && request.tools.isEmpty()) {
+                val firstErrBody = response.body?.string().orEmpty()
+                response.close()
+                // Fallback once with minimal Gemini OpenAI payload (no stream/temperature/max_tokens)
+                usedStreaming = false
+                val fallbackPayload = buildChatPayload(
+                    modelId = effectiveModelId,
+                    messagesJson = messagesJson,
+                    stream = false,
+                    temperature = request.temperature,
+                    maxTokens = request.maxTokens,
+                    tools = emptyList(),
+                    includeOptionalSampling = false,
+                )
+                httpRequest = buildBaseRequest(endpointUrl, config, apiKey)
+                    .header("Accept", "application/json")
+                    .post(fallbackPayload.toRequestBody(jsonMediaType))
+                    .build()
+                call = okHttpClient.newCall(httpRequest)
+                response = call.execute()
                 if (!response.isSuccessful) {
-                    val errBody = response.body?.string().orEmpty()
+                    val secondErrBody = response.body?.string().orEmpty().ifBlank { firstErrBody }
+                    val reqId = response.header("x-request-id") ?: response.header("cf-ray") ?: ""
+                    val code = response.code
+                    response.close()
                     emit(
                         StreamEvent.Failure(
                             ErrorParser.fromHttpResponse(
-                                statusCode = response.code,
+                                statusCode = code,
+                                body = secondErrBody,
+                                providerName = config.displayName,
+                                modelId = effectiveModelId,
+                                endpointUrl = endpointUrl,
+                                requestId = reqId,
+                                activeApiKey = apiKey,
+                            ),
+                        ),
+                    )
+                    return@flow
+                }
+            }
+
+            response.use { activeResponse ->
+                val requestId = activeResponse.header("x-request-id")
+                    ?: activeResponse.header("cf-ray")
+                    ?: ""
+                if (!activeResponse.isSuccessful) {
+                    val errBody = activeResponse.body?.string().orEmpty()
+                    emit(
+                        StreamEvent.Failure(
+                            ErrorParser.fromHttpResponse(
+                                statusCode = activeResponse.code,
                                 body = errBody,
                                 providerName = config.displayName,
-                                modelId = request.modelId,
+                                modelId = effectiveModelId,
                                 endpointUrl = endpointUrl,
                                 requestId = requestId,
                                 activeApiKey = apiKey,
@@ -511,14 +602,14 @@ class OpenAiCompatibleProvider @Inject constructor(
                     return@flow
                 }
 
-                val body = response.body ?: run {
+                val body = activeResponse.body ?: run {
                     emit(
                         StreamEvent.Failure(
                             ErrorParser.fromHttpResponse(
-                                statusCode = response.code,
+                                statusCode = activeResponse.code,
                                 body = "Empty response body",
                                 providerName = config.displayName,
-                                modelId = request.modelId,
+                                modelId = effectiveModelId,
                                 endpointUrl = endpointUrl,
                                 requestId = requestId,
                                 activeApiKey = apiKey,
@@ -528,8 +619,8 @@ class OpenAiCompatibleProvider @Inject constructor(
                     return@flow
                 }
 
-                val contentType = response.header("Content-Type").orEmpty()
-                if (!request.stream || contentType.contains("application/json", ignoreCase = true)) {
+                val contentType = activeResponse.header("Content-Type").orEmpty()
+                if (!usedStreaming || contentType.contains("application/json", ignoreCase = true)) {
                     val raw = body.string()
                     val parsed = parseNonStreamingChoice(raw)
                     if (parsed.toolCalls.isNotEmpty()) {
@@ -557,7 +648,7 @@ class OpenAiCompatibleProvider @Inject constructor(
                     ErrorParser.fromThrowable(
                         throwable = t,
                         providerName = config.displayName,
-                        modelId = request.modelId,
+                        modelId = effectiveModelId,
                         endpointUrl = endpointUrl,
                         activeApiKey = apiKey,
                     ),
@@ -566,15 +657,57 @@ class OpenAiCompatibleProvider @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun buildConversationItemJson(item: ConversationItem): JsonObject {
+    internal fun buildChatPayload(
+        modelId: String,
+        messagesJson: JsonArray,
+        stream: Boolean,
+        temperature: Float,
+        maxTokens: Int,
+        tools: List<ToolDefinition>,
+        includeOptionalSampling: Boolean,
+    ): String {
+        val cleanTemp = kotlin.math.round(temperature.toDouble() * 100.0) / 100.0
+        return buildJsonObject {
+            put("model", modelId)
+            put("messages", messagesJson)
+            put("stream", stream)
+            if (includeOptionalSampling) {
+                put("temperature", cleanTemp)
+                if (maxTokens > 0) {
+                    put("max_tokens", maxTokens)
+                }
+            }
+            if (tools.isNotEmpty()) {
+                put(
+                    "tools",
+                    buildJsonArray {
+                        for (tool in tools) {
+                            addJsonObject {
+                                put("type", "function")
+                                putJsonObject("function") {
+                                    put("name", tool.name)
+                                    put("description", tool.description)
+                                    put("parameters", tool.parametersSchema)
+                                }
+                            }
+                        }
+                    },
+                )
+                put("tool_choice", "auto")
+            }
+        }.toString()
+    }
+
+    internal suspend fun buildConversationItemJson(
+        item: ConversationItem,
+        includeToolName: Boolean = false,
+    ): JsonObject? {
         return when (item) {
             is ConversationItem.StandardMessage -> buildMessageJson(item.message)
             is ConversationItem.AssistantToolCallTurn -> buildJsonObject {
                 put("role", "assistant")
                 if (item.text.isNotBlank()) {
                     put("content", item.text)
-                } else {
-                    put("content", "")
                 }
                 put(
                     "tool_calls",
@@ -595,12 +728,15 @@ class OpenAiCompatibleProvider @Inject constructor(
             is ConversationItem.ToolResultTurn -> buildJsonObject {
                 put("role", "tool")
                 put("tool_call_id", item.toolCallId)
-                put("content", item.content)
+                if (includeToolName && item.toolName.isNotBlank()) {
+                    put("name", item.toolName)
+                }
+                put("content", item.content.ifBlank { "{}" })
             }
         }
     }
 
-    private suspend fun buildMessageJson(msg: ChatMessage): JsonObject {
+    private suspend fun buildMessageJson(msg: ChatMessage): JsonObject? {
         val role = when (msg.role) {
             MessageRole.USER -> "user"
             MessageRole.ASSISTANT -> "assistant"
@@ -640,6 +776,9 @@ class OpenAiCompatibleProvider @Inject constructor(
         }
 
         val combinedText = textParts.joinToString("\n\n")
+        if (combinedText.isBlank() && imageDataUris.isEmpty()) {
+            return null
+        }
         return if (imageDataUris.isEmpty()) {
             buildJsonObject {
                 put("role", role)
@@ -770,9 +909,11 @@ class OpenAiCompatibleProvider @Inject constructor(
     ): Result<GeneratedMedia> = withContext(Dispatchers.IO) {
         runCatching {
             val base = validateBaseUrl(config.baseUrl, config.displayName, apiKey)
-            val endpointUrl = "$base/images/generations"
+            val chatBase = resolveOpenAiBaseUrl(config, base)
+            val endpointUrl = "$chatBase/images/generations"
+            val effectiveModelId = normalizeModelIdForRequest(config, chatBase, request.modelId)
             val payload = buildJsonObject {
-                put("model", request.modelId)
+                put("model", effectiveModelId)
                 put("prompt", request.prompt)
                 put("n", 1)
                 put("size", "1024x1024")
@@ -829,9 +970,11 @@ class OpenAiCompatibleProvider @Inject constructor(
     ): Result<GeneratedMedia> = withContext(Dispatchers.IO) {
         runCatching {
             val base = validateBaseUrl(config.baseUrl, config.displayName, apiKey)
-            val endpointUrl = "$base/videos/generations"
+            val chatBase = resolveOpenAiBaseUrl(config, base)
+            val endpointUrl = "$chatBase/videos/generations"
+            val effectiveModelId = normalizeModelIdForRequest(config, chatBase, request.modelId)
             val payload = buildJsonObject {
-                put("model", request.modelId)
+                put("model", effectiveModelId)
                 put("prompt", request.prompt)
             }.toString()
 

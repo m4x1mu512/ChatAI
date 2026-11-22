@@ -248,4 +248,8 @@
     <string name="github_scopes_label">Права: %1$s</string>
     <string name="github_private_badge">Приватный</string>
     <string name="github_public_badge">Публичный</string>
+    <string name="github_repos_empty">Нет репозиториев по этому запросу.</string>
+    <string name="github_files_empty">Эта папка пуста.</string>
+    <string name="github_issues_empty">Открытых issue не найдено.</string>
+    <string name="github_prs_empty">Открытых Pull Request не найдено.</string>
 </resources>

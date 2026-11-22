@@ -1,19 +1,32 @@
 package com.example.ui.screens.providers
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,7 +46,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +61,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +76,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -69,6 +87,8 @@ import com.example.ui.components.CapabilityBadge
 import com.example.ui.components.ErrorReportCard
 import com.example.ui.components.ProviderLogoBadge
 import com.example.ui.components.ProviderStatusChip
+import com.example.ui.components.pressScale
+import com.example.ui.theme.semanticColors
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -98,12 +118,21 @@ fun ProviderConfigScreen(
         }
     }
 
+    val semantic = MaterialTheme.semanticColors
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.provider_config_title)) },
+                title = {
+                    Text(
+                        text = stringResource(R.string.provider_config_title),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -131,36 +160,62 @@ fun ProviderConfigScreen(
                         }
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentAlignment = Alignment.TopCenter,
         ) {
-            item(key = "header_summary") {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    ProviderLogoBadge(providerType = state.type, size = 48.dp)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = state.type.defaultDisplayName,
-                            style = MaterialTheme.typography.titleLarge,
-                        )
-                        Text(
-                            text = stringResource(state.type.descriptionRes),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+            LazyColumn(
+                modifier = Modifier
+                    .widthIn(max = 720.dp)
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                item(key = "header_summary") {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            ProviderLogoBadge(providerType = state.type, size = 48.dp)
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                                ) {
+                                    Text(
+                                        text = state.type.defaultDisplayName,
+                                        style = MaterialTheme.typography.titleLarge,
+                                    )
+                                    ProviderStatusChip(status = state.status)
+                                }
+                                Text(
+                                    text = stringResource(state.type.descriptionRes),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
-                    ProviderStatusChip(status = state.status)
                 }
-            }
 
             item(key = "name_and_url") {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -251,57 +306,67 @@ fun ProviderConfigScreen(
             }
 
             item(key = "protocol_mode") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = stringResource(R.string.provider_field_protocol),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        FilterChip(
-                            selected = state.protocol == ApiProtocol.OPENAI_COMPATIBLE,
-                            onClick = { viewModel.updateProtocol(ApiProtocol.OPENAI_COMPATIBLE) },
-                            label = { Text(stringResource(R.string.protocol_openai)) },
-                            modifier = Modifier.testTag("protocol_openai"),
+                        Text(
+                            text = stringResource(R.string.provider_field_protocol),
+                            style = MaterialTheme.typography.titleSmall,
                         )
-                        FilterChip(
-                            selected = state.protocol == ApiProtocol.ANTHROPIC_COMPATIBLE,
-                            onClick = { viewModel.updateProtocol(ApiProtocol.ANTHROPIC_COMPATIBLE) },
-                            label = { Text(stringResource(R.string.protocol_anthropic)) },
-                            modifier = Modifier.testTag("protocol_anthropic"),
-                        )
-                        FilterChip(
-                            selected = state.protocol == ApiProtocol.AUTO,
-                            onClick = { viewModel.updateProtocol(ApiProtocol.AUTO) },
-                            label = { Text(stringResource(R.string.protocol_auto)) },
-                            modifier = Modifier.testTag("protocol_auto"),
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            Text(
-                                text = stringResource(R.string.protocol_hint_openai),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            FilterChip(
+                                selected = state.protocol == ApiProtocol.OPENAI_COMPATIBLE,
+                                onClick = { viewModel.updateProtocol(ApiProtocol.OPENAI_COMPATIBLE) },
+                                label = { Text(stringResource(R.string.protocol_openai)) },
+                                modifier = Modifier.testTag("protocol_openai"),
                             )
-                            Text(
-                                text = stringResource(R.string.protocol_hint_anthropic),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            FilterChip(
+                                selected = state.protocol == ApiProtocol.ANTHROPIC_COMPATIBLE,
+                                onClick = { viewModel.updateProtocol(ApiProtocol.ANTHROPIC_COMPATIBLE) },
+                                label = { Text(stringResource(R.string.protocol_anthropic)) },
+                                modifier = Modifier.testTag("protocol_anthropic"),
                             )
-                            Text(
-                                text = stringResource(R.string.protocol_hint_tip),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
+                            FilterChip(
+                                selected = state.protocol == ApiProtocol.AUTO,
+                                onClick = { viewModel.updateProtocol(ApiProtocol.AUTO) },
+                                label = { Text(stringResource(R.string.protocol_auto)) },
+                                modifier = Modifier.testTag("protocol_auto"),
                             )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.protocol_hint_openai),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = stringResource(R.string.protocol_hint_anthropic),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = stringResource(R.string.protocol_hint_tip),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
                     }
                 }
@@ -329,47 +394,59 @@ fun ProviderConfigScreen(
             }
 
             item(key = "custom_headers") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(
-                            text = stringResource(R.string.provider_headers_title),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        TextButton(onClick = viewModel::addCustomHeader) {
-                            Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.provider_headers_add))
-                        }
-                    }
-                    state.customHeaders.forEachIndexed { idx, header ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            OutlinedTextField(
-                                value = header.name,
-                                onValueChange = { viewModel.updateCustomHeader(idx, it, header.value) },
-                                label = { Text(stringResource(R.string.provider_header_name)) },
-                                singleLine = true,
+                            Text(
+                                text = stringResource(R.string.provider_headers_title),
+                                style = MaterialTheme.typography.titleSmall,
                                 modifier = Modifier.weight(1f),
                             )
-                            OutlinedTextField(
-                                value = header.value,
-                                onValueChange = { viewModel.updateCustomHeader(idx, header.name, it) },
-                                label = { Text(stringResource(R.string.provider_header_value)) },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f),
-                            )
-                            IconButton(onClick = { viewModel.removeCustomHeader(idx) }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.DeleteOutline,
-                                    contentDescription = stringResource(R.string.action_delete),
+                            TextButton(onClick = viewModel::addCustomHeader) {
+                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(stringResource(R.string.provider_headers_add))
+                            }
+                        }
+                        state.customHeaders.forEachIndexed { idx, header ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                OutlinedTextField(
+                                    value = header.name,
+                                    onValueChange = { viewModel.updateCustomHeader(idx, it, header.value) },
+                                    label = { Text(stringResource(R.string.provider_header_name)) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
                                 )
+                                OutlinedTextField(
+                                    value = header.value,
+                                    onValueChange = { viewModel.updateCustomHeader(idx, header.name, it) },
+                                    label = { Text(stringResource(R.string.provider_header_value)) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(onClick = { viewModel.removeCustomHeader(idx) }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.DeleteOutline,
+                                        contentDescription = stringResource(R.string.action_delete),
+                                        tint = MaterialTheme.colorScheme.error,
+                                    )
+                                }
                             }
                         }
                     }
@@ -379,14 +456,19 @@ fun ProviderConfigScreen(
             item(key = "actions_and_check") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Max),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        OutlinedButton(
+                        FilledTonalButton(
                             onClick = viewModel::testConnection,
                             enabled = !state.isTesting,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .weight(1f)
+                                .fillMaxHeight()
+                                .heightIn(min = 48.dp)
                                 .testTag("test_connection_button"),
                         ) {
                             if (state.isTesting) {
@@ -395,13 +477,21 @@ fun ProviderConfigScreen(
                                 Icon(Icons.Outlined.NetworkCheck, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.provider_test_connection))
+                            Text(
+                                text = stringResource(R.string.provider_test_connection),
+                                maxLines = 2,
+                                textAlign = TextAlign.Center,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                         OutlinedButton(
                             onClick = viewModel::fetchModelsOnly,
                             enabled = !state.isFetchingModels,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .weight(1f)
+                                .fillMaxHeight()
+                                .heightIn(min = 48.dp)
                                 .testTag("fetch_models_button"),
                         ) {
                             if (state.isFetchingModels) {
@@ -410,7 +500,12 @@ fun ProviderConfigScreen(
                                 Icon(Icons.Outlined.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.provider_fetch_models))
+                            Text(
+                                text = stringResource(R.string.provider_fetch_models),
+                                maxLines = 2,
+                                textAlign = TextAlign.Center,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
 
@@ -424,11 +519,16 @@ fun ProviderConfigScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
-                    state.checkResult?.let { res ->
-                        if (res.success) {
+                    AnimatedVisibility(
+                        visible = state.checkResult?.success == true,
+                        enter = fadeIn(tween(180)) + expandVertically(tween(180)),
+                        exit = fadeOut(tween(140)) + shrinkVertically(tween(140)),
+                    ) {
+                        state.checkResult?.let { res ->
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                                color = semantic.successContainer,
+                                border = BorderStroke(1.dp, semantic.success.copy(alpha = 0.28f)),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Row(
@@ -438,12 +538,13 @@ fun ProviderConfigScreen(
                                     Icon(
                                         imageVector = Icons.Outlined.CheckCircle,
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
+                                        tint = semantic.success,
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = res.message,
                                         style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                             }
@@ -462,6 +563,7 @@ fun ProviderConfigScreen(
                                 onClick = { viewModel.saveAndFetchModels(onSaved = onBack) },
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
                                     .testTag("save_without_models_button"),
                             ) {
                                 Text(stringResource(R.string.provider_save_without_models))
@@ -472,38 +574,50 @@ fun ProviderConfigScreen(
             }
 
             item(key = "manual_model_entry") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = stringResource(R.string.provider_manual_model_title),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    if (state.showManualModelPrompt) {
-                        Text(
-                            text = stringResource(R.string.provider_manual_model_note),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        OutlinedTextField(
-                            value = state.manualModelInput,
-                            onValueChange = viewModel::updateManualModelInput,
-                            label = { Text(stringResource(R.string.provider_manual_model_hint)) },
-                            singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("manual_model_input"),
+                        Text(
+                            text = stringResource(R.string.provider_manual_model_title),
+                            style = MaterialTheme.typography.titleSmall,
                         )
-                        Button(
-                            onClick = viewModel::addManualModel,
-                            enabled = state.manualModelInput.isNotBlank(),
-                            modifier = Modifier.testTag("add_manual_model_button"),
+                        if (state.showManualModelPrompt) {
+                            Text(
+                                text = stringResource(R.string.provider_manual_model_note),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(stringResource(R.string.action_confirm))
+                            OutlinedTextField(
+                                value = state.manualModelInput,
+                                onValueChange = viewModel::updateManualModelInput,
+                                label = { Text(stringResource(R.string.provider_manual_model_hint)) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("manual_model_input"),
+                            )
+                            Button(
+                                onClick = viewModel::addManualModel,
+                                enabled = state.manualModelInput.isNotBlank(),
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("add_manual_model_button"),
+                            ) {
+                                Text(stringResource(R.string.action_confirm))
+                            }
                         }
                     }
                 }
@@ -514,6 +628,7 @@ fun ProviderConfigScreen(
                 val allSelected = selectedCount == state.models.size
                 item(key = "loaded_models_header") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -561,17 +676,31 @@ fun ProviderConfigScreen(
                 items(filteredModels, key = { "cfg_model_${it.modelId}" }) { model ->
                     val isDefault = model.modelId == state.selectedModelId
                     val isChecked = model.isEnabled
+                    val itemInteraction = remember { MutableInteractionSource() }
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = if (isChecked) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
                         } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            MaterialTheme.colorScheme.surface
                         },
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = if (isChecked) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            },
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .animateItem()
+                            .pressScale(itemInteraction)
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { viewModel.toggleModelSelection(model.modelId) }
+                            .clickable(
+                                interactionSource = itemInteraction,
+                                indication = ripple(),
+                            ) { viewModel.toggleModelSelection(model.modelId) }
                             .testTag("provider_model_row_${model.modelId}"),
                     ) {
                         Row(
@@ -628,6 +757,7 @@ fun ProviderConfigScreen(
             }
 
             item { Spacer(modifier = Modifier.height(32.dp)) }
+        }
         }
     }
 }

@@ -1,6 +1,15 @@
 package com.example.ui.navigation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -14,6 +23,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -137,46 +147,60 @@ fun AiChatAppRoot(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            if (showTopLevelNav && !isExpanded) {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = activeTab == TopTab.CHATS,
-                        onClick = { navigateTopTab(TopTab.CHATS) },
-                        icon = {
-                            Icon(
-                                if (activeTab == TopTab.CHATS) Icons.Filled.ChatBubble else Icons.Outlined.ChatBubbleOutline,
-                                contentDescription = null,
-                            )
-                        },
-                        label = { Text(stringResource(R.string.nav_chats)) },
-                        modifier = Modifier.testTag("nav_chats"),
+            AnimatedVisibility(
+                visible = showTopLevelNav && !isExpanded,
+                enter = slideInVertically(tween(180)) { it } + fadeIn(tween(180)),
+                exit = slideOutVertically(tween(150)) { it } + fadeOut(tween(150)),
+            ) {
+                Column {
+                    HorizontalDivider(
+                        thickness = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant,
                     )
-                    NavigationBarItem(
-                        selected = activeTab == TopTab.PROVIDERS,
-                        onClick = { navigateTopTab(TopTab.PROVIDERS) },
-                        icon = {
-                            Icon(
-                                if (activeTab == TopTab.PROVIDERS) Icons.Filled.Hub else Icons.Outlined.Hub,
-                                contentDescription = null,
-                            )
-                        },
-                        label = { Text(stringResource(R.string.nav_providers)) },
-                        modifier = Modifier.testTag("nav_providers"),
-                    )
-                    NavigationBarItem(
-                        selected = activeTab == TopTab.SETTINGS,
-                        onClick = { navigateTopTab(TopTab.SETTINGS) },
-                        icon = {
-                            Icon(
-                                if (activeTab == TopTab.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings,
-                                contentDescription = null,
-                            )
-                        },
-                        label = { Text(stringResource(R.string.nav_settings)) },
-                        modifier = Modifier.testTag("nav_settings"),
-                    )
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 0.dp,
+                    ) {
+                        NavigationBarItem(
+                            selected = activeTab == TopTab.CHATS,
+                            onClick = { navigateTopTab(TopTab.CHATS) },
+                            icon = {
+                                Icon(
+                                    if (activeTab == TopTab.CHATS) Icons.Filled.ChatBubble else Icons.Outlined.ChatBubbleOutline,
+                                    contentDescription = null,
+                                )
+                            },
+                            label = { Text(stringResource(R.string.nav_chats)) },
+                            modifier = Modifier.testTag("nav_chats"),
+                        )
+                        NavigationBarItem(
+                            selected = activeTab == TopTab.PROVIDERS,
+                            onClick = { navigateTopTab(TopTab.PROVIDERS) },
+                            icon = {
+                                Icon(
+                                    if (activeTab == TopTab.PROVIDERS) Icons.Filled.Hub else Icons.Outlined.Hub,
+                                    contentDescription = null,
+                                )
+                            },
+                            label = { Text(stringResource(R.string.nav_providers)) },
+                            modifier = Modifier.testTag("nav_providers"),
+                        )
+                        NavigationBarItem(
+                            selected = activeTab == TopTab.SETTINGS,
+                            onClick = { navigateTopTab(TopTab.SETTINGS) },
+                            icon = {
+                                Icon(
+                                    if (activeTab == TopTab.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings,
+                                    contentDescription = null,
+                                )
+                            },
+                            label = { Text(stringResource(R.string.nav_settings)) },
+                            modifier = Modifier.testTag("nav_settings"),
+                        )
+                    }
                 }
             }
         },
@@ -187,7 +211,10 @@ fun AiChatAppRoot(
                 .padding(innerPadding),
         ) {
             if (showTopLevelNav && isExpanded) {
-                NavigationRail(modifier = Modifier.fillMaxHeight()) {
+                NavigationRail(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxHeight(),
+                ) {
                     NavigationRailItem(
                         selected = activeTab == TopTab.CHATS,
                         onClick = { navigateTopTab(TopTab.CHATS) },
@@ -222,12 +249,16 @@ fun AiChatAppRoot(
                         label = { Text(stringResource(R.string.nav_settings)) },
                     )
                 }
-                VerticalDivider()
+                VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
 
             NavHost(
                 navController = navController,
                 startDestination = startDestination,
+                enterTransition = { fadeIn(tween(180)) },
+                exitTransition = { fadeOut(tween(150)) },
+                popEnterTransition = { fadeIn(tween(180)) },
+                popExitTransition = { fadeOut(tween(150)) },
                 modifier = Modifier.weight(1f),
             ) {
                 composable<ProvidersRoute> {
@@ -245,7 +276,16 @@ fun AiChatAppRoot(
                     )
                 }
 
-                composable<ProviderEditRoute> { entry ->
+                composable<ProviderEditRoute>(
+                    enterTransition = {
+                        slideInHorizontally(tween(220)) { it / 6 } + fadeIn(tween(220))
+                    },
+                    exitTransition = { fadeOut(tween(150)) },
+                    popEnterTransition = { fadeIn(tween(180)) },
+                    popExitTransition = {
+                        slideOutHorizontally(tween(200)) { it / 6 } + fadeOut(tween(180))
+                    },
+                ) { entry ->
                     val route = entry.toRoute<ProviderEditRoute>()
                     val vm: ProvidersViewModel = hiltViewModel()
                     LaunchedEffect(route.providerId, route.presetType) {
@@ -282,7 +322,7 @@ fun AiChatAppRoot(
                                     onOpenProviders = { navigateTopTab(TopTab.PROVIDERS) },
                                 )
                             }
-                            VerticalDivider()
+                            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                                 val selectedId = tabletSelectedChatId
                                 if (selectedId != null) {
@@ -324,7 +364,16 @@ fun AiChatAppRoot(
                     }
                 }
 
-                composable<ChatDetailRoute> { entry ->
+                composable<ChatDetailRoute>(
+                    enterTransition = {
+                        slideInHorizontally(tween(220)) { it / 6 } + fadeIn(tween(220))
+                    },
+                    exitTransition = { fadeOut(tween(150)) },
+                    popEnterTransition = { fadeIn(tween(180)) },
+                    popExitTransition = {
+                        slideOutHorizontally(tween(200)) { it / 6 } + fadeOut(tween(180))
+                    },
+                ) { entry ->
                     val route = entry.toRoute<ChatDetailRoute>()
                     val chatVm: ChatViewModel = hiltViewModel()
                     LaunchedEffect(route.chatId) {
@@ -345,7 +394,12 @@ fun AiChatAppRoot(
                     )
                 }
 
-                composable<MediaViewerRoute> { entry ->
+                composable<MediaViewerRoute>(
+                    enterTransition = { fadeIn(tween(200)) },
+                    exitTransition = { fadeOut(tween(150)) },
+                    popEnterTransition = { fadeIn(tween(180)) },
+                    popExitTransition = { fadeOut(tween(180)) },
+                ) { entry ->
                     val route = entry.toRoute<MediaViewerRoute>()
                     MediaViewerScreen(
                         uris = route.uris,
@@ -363,7 +417,16 @@ fun AiChatAppRoot(
                     )
                 }
 
-                composable<GitHubRoute> {
+                composable<GitHubRoute>(
+                    enterTransition = {
+                        slideInHorizontally(tween(220)) { it / 6 } + fadeIn(tween(220))
+                    },
+                    exitTransition = { fadeOut(tween(150)) },
+                    popEnterTransition = { fadeIn(tween(180)) },
+                    popExitTransition = {
+                        slideOutHorizontally(tween(200)) { it / 6 } + fadeOut(tween(180))
+                    },
+                ) {
                     val vm: GitHubViewModel = hiltViewModel()
                     GitHubScreen(
                         viewModel = vm,

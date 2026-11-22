@@ -1,8 +1,17 @@
 package com.example.ui.screens.providers
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,9 +23,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,6 +58,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,6 +84,7 @@ import com.example.core.model.ProviderStatus
 import com.example.core.model.ProviderType
 import com.example.ui.components.ProviderLogoBadge
 import com.example.ui.components.ProviderStatusChip
+import com.example.ui.components.pressScale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,6 +108,7 @@ fun ProvidersScreen(
         modifier = modifier
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             LargeTopAppBar(
                 title = {
@@ -123,64 +137,77 @@ fun ProvidersScreen(
                         }
                     }
                 },
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
                 scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentAlignment = Alignment.TopCenter,
         ) {
-            item(key = "hero") {
-                ProvidersHeroBanner()
-            }
+            LazyColumn(
+                modifier = Modifier
+                    .widthIn(max = 720.dp)
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item(key = "hero") {
+                    ProvidersHeroBanner()
+                }
 
-            if (configured.isNotEmpty()) {
-                item(key = "configured_header") {
+                if (configured.isNotEmpty()) {
+                    item(key = "configured_header") {
+                        Text(
+                            text = stringResource(R.string.providers_configured_section),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+                        )
+                    }
+
+                    items(configured, key = { "cfg_${it.id}" }) { provider ->
+                        ConfiguredProviderCard(
+                            provider = provider,
+                            models = modelsByProvider[provider.id].orEmpty(),
+                            isRefreshingModels = provider.id in refreshingIds,
+                            onEdit = { onEditProvider(provider.id) },
+                            onToggle = { enabled -> viewModel.toggleProviderEnabled(provider.id, enabled) },
+                            onRefreshModels = { viewModel.refreshModelsForProvider(provider.id) },
+                            onSelectModel = { modelId -> viewModel.selectProviderDefaultModel(provider.id, modelId) },
+                            onDelete = { pendingDelete = provider },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
+
+                item(key = "catalog_header") {
                     Text(
-                        text = stringResource(R.string.providers_configured_section),
-                        style = MaterialTheme.typography.titleMedium,
+                        text = stringResource(R.string.providers_catalog_section),
+                        style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
                     )
                 }
 
-                items(configured, key = { "cfg_${it.id}" }) { provider ->
-                    ConfiguredProviderCard(
-                        provider = provider,
-                        models = modelsByProvider[provider.id].orEmpty(),
-                        isRefreshingModels = provider.id in refreshingIds,
-                        onEdit = { onEditProvider(provider.id) },
-                        onToggle = { enabled -> viewModel.toggleProviderEnabled(provider.id, enabled) },
-                        onRefreshModels = { viewModel.refreshModelsForProvider(provider.id) },
-                        onSelectModel = { modelId -> viewModel.selectProviderDefaultModel(provider.id, modelId) },
-                        onDelete = { pendingDelete = provider },
+                items(ProviderType.entries, key = { "type_${it.name}" }) { type ->
+                    val existingAccounts = configuredByType[type].orEmpty()
+                    PresetProviderCard(
+                        type = type,
+                        existingAccounts = existingAccounts,
+                        onConfigureOrAdd = { onAddProvider(type) },
+                        modifier = Modifier.animateItem(),
                     )
                 }
-            }
 
-            item(key = "catalog_header") {
-                Text(
-                    text = stringResource(R.string.providers_catalog_section),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
-                )
+                item { Spacer(modifier = Modifier.height(24.dp)) }
             }
-
-            items(ProviderType.entries, key = { "type_${it.name}" }) { type ->
-                val existingAccounts = configuredByType[type].orEmpty()
-                PresetProviderCard(
-                    type = type,
-                    existingAccounts = existingAccounts,
-                    onConfigureOrAdd = { onAddProvider(type) },
-                )
-            }
-
-            item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 
@@ -215,59 +242,66 @@ fun ProvidersScreen(
 @Composable
 private fun ProvidersHeroBanner() {
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(148.dp),
+                .heightIn(min = 132.dp),
         ) {
             Image(
                 painter = painterResource(id = R.drawable.img_providers_hero),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.matchParentSize(),
             )
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .matchParentSize()
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0xCC0F172A),
-                                Color(0xEE0F172A),
+                                Color(0xB8111827),
+                                Color(0xE80F172A),
                             ),
                         ),
                     ),
             )
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
                     .padding(18.dp),
-                verticalArrangement = Arrangement.Bottom,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Outlined.Key,
-                        contentDescription = null,
-                        tint = Color(0xFF38BDF8),
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Android Keystore AES-256",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color(0xFF38BDF8),
-                    )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.White.copy(alpha = 0.14f),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Key,
+                            contentDescription = null,
+                            tint = Color(0xFFE2E8F0),
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Android Keystore AES-256",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFFF1F5F9),
+                        )
+                    }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = stringResource(R.string.providers_onboarding_subtitle),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.92f),
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
+                    color = Color.White.copy(alpha = 0.94f),
                 )
             }
         }
@@ -285,17 +319,26 @@ private fun ConfiguredProviderCard(
     onRefreshModels: () -> Unit,
     onSelectModel: (String) -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var modelsExpanded by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
 
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = Modifier
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = modifier
             .fillMaxWidth()
+            .pressScale(interactionSource)
+            .animateContentSize(animationSpec = tween(200))
             .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onEdit)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = onEdit,
+            )
             .testTag("configured_provider_${provider.id}"),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -306,8 +349,8 @@ private fun ConfiguredProviderCard(
                 ProviderLogoBadge(providerType = provider.type)
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                    FlowRow(
+                        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
@@ -315,11 +358,10 @@ private fun ConfiguredProviderCard(
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
                         )
                         ProviderStatusChip(status = provider.status)
                     }
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = buildString {
                             append(provider.baseUrl)
@@ -334,6 +376,7 @@ private fun ConfiguredProviderCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                Spacer(modifier = Modifier.width(8.dp))
                 Switch(
                     checked = provider.isEnabled,
                     onCheckedChange = onToggle,
@@ -346,13 +389,14 @@ private fun ConfiguredProviderCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.weight(1f),
                 ) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
                         Text(
                             text = provider.resolvedProtocol.name.replace("_", "-").lowercase(),
@@ -364,7 +408,7 @@ private fun ConfiguredProviderCard(
                     if (models.isNotEmpty()) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f),
                         ) {
                             Text(
                                 text = stringResource(R.string.provider_models_section, models.size),
@@ -377,17 +421,21 @@ private fun ConfiguredProviderCard(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (isRefreshingModels) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .padding(horizontal = 10.dp)
-                                .size(18.dp),
-                            strokeWidth = 2.dp,
-                        )
+                        Box(
+                            modifier = Modifier.size(48.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
                     } else {
                         IconButton(onClick = onRefreshModels) {
                             Icon(
                                 imageVector = Icons.Outlined.Refresh,
                                 contentDescription = stringResource(R.string.provider_models_refresh),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -395,6 +443,7 @@ private fun ConfiguredProviderCard(
                         Icon(
                             imageVector = Icons.Outlined.Edit,
                             contentDescription = stringResource(R.string.action_edit),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     IconButton(onClick = onDelete) {
@@ -443,7 +492,7 @@ private fun ConfiguredProviderCard(
                 if (models.size > 6) {
                     TextButton(
                         onClick = { modelsExpanded = !modelsExpanded },
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                     ) {
                         Text(
                             text = if (modelsExpanded) {
@@ -462,21 +511,25 @@ private fun ConfiguredProviderCard(
                     }
                 }
             } else if (provider.isEnabled) {
-                if (provider.status == ProviderStatus.ERROR && provider.lastCheckMessage.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                AnimatedVisibility(
+                    visible = provider.status == ProviderStatus.ERROR && provider.lastCheckMessage.isNotBlank(),
+                    enter = fadeIn(tween(150)) + expandVertically(tween(150)),
+                    exit = fadeOut(tween(120)) + shrinkVertically(tween(120)),
+                ) {
                     Text(
                         text = provider.lastCheckMessage,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 6.dp),
                     )
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 TextButton(
                     onClick = onRefreshModels,
                     enabled = !isRefreshingModels,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                 ) {
                     Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
@@ -487,77 +540,102 @@ private fun ConfiguredProviderCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PresetProviderCard(
     type: ProviderType,
     existingAccounts: List<ProviderConfig>,
     onConfigureOrAdd: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val bestStatus = when {
         existingAccounts.any { it.status == ProviderStatus.CONNECTED } -> ProviderStatus.CONNECTED
         existingAccounts.any { it.status == ProviderStatus.ERROR } -> ProviderStatus.ERROR
         else -> ProviderStatus.NOT_CONFIGURED
     }
+    val interactionSource = remember { MutableInteractionSource() }
 
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = Modifier
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = modifier
             .fillMaxWidth()
+            .pressScale(interactionSource)
             .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onConfigureOrAdd)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = onConfigureOrAdd,
+            )
             .testTag("preset_provider_${type.name.lowercase()}"),
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            ProviderLogoBadge(providerType = type)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ProviderLogoBadge(providerType = type)
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = type.defaultDisplayName,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .padding(end = 8.dp),
+                        )
+                        ProviderStatusChip(status = bestStatus)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = type.defaultDisplayName,
-                        style = MaterialTheme.typography.titleMedium,
+                        text = stringResource(type.descriptionRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                FilledTonalButton(
+                    onClick = onConfigureOrAdd,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    modifier = Modifier.heightIn(min = 40.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (existingAccounts.isEmpty()) {
+                            stringResource(R.string.providers_configure)
+                        } else {
+                            stringResource(R.string.providers_add_account)
+                        },
+                        style = MaterialTheme.typography.labelMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    ProviderStatusChip(status = bestStatus)
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = stringResource(type.descriptionRes),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            FilledTonalButton(
-                onClick = onConfigureOrAdd,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = if (existingAccounts.isEmpty()) {
-                        stringResource(R.string.providers_configure)
-                    } else {
-                        stringResource(R.string.providers_add_account)
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                )
             }
         }
     }

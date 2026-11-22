@@ -5,14 +5,21 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Download
@@ -20,9 +27,11 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -36,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -43,6 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.R
@@ -117,56 +128,64 @@ fun MediaViewerScreen(
         containerColor = Color.Black,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Black.copy(alpha = 0.65f),
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                    actionIconContentColor = Color.White,
-                ),
-                title = {
-                    val titleText = if (!isVideo && uris.size > 1) {
-                        "${pagerState.currentPage + 1} / ${uris.size}"
-                    } else {
-                        stringResource(R.string.media_viewer_title)
-                    }
-                    Text(titleText)
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("media_viewer_back")) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = stringResource(R.string.cd_back),
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = ::triggerSave, modifier = Modifier.testTag("media_viewer_save")) {
-                        Icon(
-                            imageVector = Icons.Outlined.Download,
-                            contentDescription = stringResource(R.string.media_save),
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            if (currentUri.isNotBlank()) {
-                                val intent = mediaStoreSaver.createShareIntent(
-                                    localUriString = currentUri,
-                                    mimeType = if (isVideo) "video/mp4" else "image/png",
-                                    title = context.getString(R.string.action_share),
-                                )
-                                context.startActivity(intent)
-                            }
-                        },
-                        modifier = Modifier.testTag("media_viewer_share"),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Share,
-                            contentDescription = stringResource(R.string.action_share),
-                        )
-                    }
-                },
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.72f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            ) {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        titleContentColor = Color.White,
+                        navigationIconContentColor = Color.White,
+                        actionIconContentColor = Color.White,
+                    ),
+                    title = {
+                        Text(stringResource(R.string.media_viewer_title))
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack, modifier = Modifier.testTag("media_viewer_back")) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = stringResource(R.string.cd_back),
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = ::triggerSave, modifier = Modifier.testTag("media_viewer_save")) {
+                            Icon(
+                                imageVector = Icons.Outlined.Download,
+                                contentDescription = stringResource(R.string.media_save),
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                if (currentUri.isNotBlank()) {
+                                    val intent = mediaStoreSaver.createShareIntent(
+                                        localUriString = currentUri,
+                                        mimeType = if (isVideo) "video/mp4" else "image/png",
+                                        title = context.getString(R.string.action_share),
+                                    )
+                                    context.startActivity(intent)
+                                }
+                            },
+                            modifier = Modifier.testTag("media_viewer_share"),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Share,
+                                contentDescription = stringResource(R.string.action_share),
+                            )
+                        }
+                    },
+                )
+            }
         },
     ) { innerPadding ->
         Box(
@@ -187,6 +206,25 @@ fun MediaViewerScreen(
                 ) { page ->
                     ZoomableImagePage(imageUri = uris[page])
                 }
+
+                if (uris.size > 1) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.Black.copy(alpha = 0.6f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .navigationBarsPadding()
+                            .padding(bottom = 16.dp),
+                    ) {
+                        Text(
+                            text = "${pagerState.currentPage + 1} / ${uris.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -194,8 +232,16 @@ fun MediaViewerScreen(
 
 @Composable
 private fun ZoomableImagePage(imageUri: String) {
-    var scale by remember { mutableFloatStateOf(1f) }
+    var targetScale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    val animatedScale by animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "viewer_zoom_scale",
+    )
 
     Box(
         modifier = Modifier
@@ -203,19 +249,19 @@ private fun ZoomableImagePage(imageUri: String) {
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
-                        if (scale > 1.1f) {
-                            scale = 1f
+                        if (targetScale > 1.1f) {
+                            targetScale = 1f
                             offset = Offset.Zero
                         } else {
-                            scale = 2.5f
+                            targetScale = 2.5f
                         }
                     },
                 )
             }
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
-                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
-                    scale = nextScale
+                    val nextScale = (targetScale * zoom).coerceIn(1f, 5f)
+                    targetScale = nextScale
                     offset = if (nextScale > 1f) {
                         offset + pan
                     } else {
@@ -232,8 +278,8 @@ private fun ZoomableImagePage(imageUri: String) {
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
+                    scaleX = animatedScale,
+                    scaleY = animatedScale,
                     translationX = offset.x,
                     translationY = offset.y,
                 ),

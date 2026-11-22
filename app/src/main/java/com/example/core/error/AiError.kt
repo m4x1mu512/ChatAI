@@ -112,14 +112,26 @@ object ErrorParser {
         var parsedMessage = ""
 
         runCatching {
-            val root = json.parseToJsonElement(body) as? JsonObject ?: return@runCatching
+            val parsedElem = json.parseToJsonElement(body)
+            val root: JsonObject? = when (parsedElem) {
+                is JsonObject -> parsedElem
+                is JsonArray -> parsedElem.firstOrNull() as? JsonObject
+                else -> null
+            }
+            if (root == null) return@runCatching
             val errorObj = root["error"] as? JsonObject
             val errorsArr = root["errors"] as? JsonArray
             val firstArrayErr = errorsArr?.firstOrNull() as? JsonObject
             when {
                 errorObj != null -> {
-                    parsedCode = (errorObj["code"] as? JsonPrimitive)?.contentOrNull
-                        ?: (errorObj["type"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                    val rawCode = (errorObj["code"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                    val rawTypeOrStatus = (errorObj["type"] as? JsonPrimitive)?.contentOrNull
+                        ?: (errorObj["status"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                    parsedCode = when {
+                        rawTypeOrStatus.isNotBlank() && (rawCode.isBlank() || rawCode == statusCode.toString()) -> rawTypeOrStatus
+                        rawCode.isNotBlank() -> rawCode
+                        else -> rawTypeOrStatus
+                    }
                     parsedMessage = (errorObj["message"] as? JsonPrimitive)?.contentOrNull.orEmpty()
                 }
                 firstArrayErr != null -> {

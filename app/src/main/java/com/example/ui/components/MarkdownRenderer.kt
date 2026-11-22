@@ -1,12 +1,15 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -52,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.semanticColors
 
 private sealed interface MdBlock {
     data class Heading(val level: Int, val text: String) : MdBlock
@@ -137,17 +141,18 @@ fun MarkdownText(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-                            .padding(vertical = 6.dp, horizontal = 10.dp),
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.65f))
+                            .padding(vertical = 8.dp, horizontal = 10.dp),
                     ) {
                         Box(
                             modifier = Modifier
                                 .width(3.dp)
-                                .height(20.dp)
+                                .fillMaxHeight()
                                 .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)),
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = parseInlineMarkdown(block.text, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.surfaceVariant),
                             style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
@@ -184,19 +189,20 @@ private fun CodeBlockCard(
 ) {
     val clipboard = LocalClipboardManager.current
     val highlighted = remember(code, language) { highlightSyntax(code) }
+    val semantic = MaterialTheme.semanticColors
 
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF0F172A),
-        tonalElevation = 2.dp,
+        color = semantic.codeSurface,
+        border = BorderStroke(1.dp, semantic.codeBorder),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF1E293B))
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .background(semantic.codeHeader)
+                    .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -219,13 +225,13 @@ private fun CodeBlockCard(
                         clipboard.setText(AnnotatedString(code))
                         onCopied?.invoke()
                     },
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.ContentCopy,
                         contentDescription = stringResource(R.string.chat_copy_code),
-                        tint = Color(0xFF94A3B8),
-                        modifier = Modifier.size(16.dp),
+                        tint = Color(0xFFCBD5E1),
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -255,7 +261,8 @@ private fun LatexMathCard(tex: String) {
 
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {},
@@ -263,7 +270,7 @@ private fun LatexMathCard(tex: String) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -287,7 +294,7 @@ private fun LatexMathCard(tex: String) {
             }
             IconButton(
                 onClick = { showRaw = !showRaw },
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Functions,

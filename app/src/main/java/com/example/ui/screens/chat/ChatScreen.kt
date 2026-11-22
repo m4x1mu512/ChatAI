@@ -9,11 +9,21 @@ import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,6 +59,7 @@ import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AddLink
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Code
@@ -87,6 +98,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -95,6 +107,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -132,12 +145,16 @@ import com.example.core.model.GitHubRepoSummary
 import com.example.core.model.MessageRole
 import com.example.core.model.MessageStatus
 import com.example.core.model.ProviderStatus
+import com.example.ui.components.EmptyStatePanel
 import com.example.ui.components.ErrorReportCard
 import com.example.ui.components.InlineVideoPlayer
 import com.example.ui.components.MarkdownText
 import com.example.ui.components.ProviderLogoBadge
 import com.example.ui.components.SkeletonShimmerBlock
+import com.example.ui.components.pressScale
 import com.example.ui.screens.models.ModelPickerSheet
+import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.semanticColors
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -268,168 +285,204 @@ fun ChatScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    if (showBackButton) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                                contentDescription = stringResource(R.string.cd_back),
-                            )
-                        }
-                    }
-                },
-                title = {
-                    Column {
-                        Text(
-                            text = state.chat?.title ?: stringResource(R.string.chats_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        state.activeProvider?.let { provider ->
-                            Text(
-                                text = provider.displayName,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    val isUnselected = state.activeModelId.isNullOrBlank()
-                    val isRefreshingAny = state.refreshingProviderIds.isNotEmpty()
-                    val pillContentColor = if (isUnselected) {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = if (isUnselected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.secondaryContainer
-                        },
-                        border = BorderStroke(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
-                        ),
-                        modifier = Modifier
-                            .padding(end = 10.dp)
-                            .heightIn(min = 40.dp)
-                            .widthIn(max = 190.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .clickable {
-                                if (state.models.isEmpty()) {
-                                    viewModel.refreshAllProviderModels()
-                                } else {
-                                    viewModel.syncConnectedProviderModels()
-                                }
-                                showModelPicker = true
-                            }
-                            .testTag("model_selector_pill"),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            if (isRefreshingAny && isUnselected) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp,
-                                    color = pillContentColor,
+            Column {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                    navigationIcon = {
+                        if (showBackButton) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                    contentDescription = stringResource(R.string.cd_back),
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                            } else {
-                                state.activeProvider?.let {
-                                    ProviderLogoBadge(providerType = it.type, size = 18.dp)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                }
                             }
+                        }
+                    },
+                    title = {
+                        Column {
                             Text(
-                                text = when {
-                                    !state.activeModelId.isNullOrBlank() -> state.activeModelId.orEmpty()
-                                    isRefreshingAny -> stringResource(R.string.chat_loading_models_short)
-                                    else -> stringResource(R.string.chat_select_model)
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                                color = pillContentColor,
+                                text = state.chat?.title ?: stringResource(R.string.chats_title),
+                                style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
                             )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Icon(
-                                imageVector = Icons.Outlined.ExpandMore,
-                                contentDescription = stringResource(R.string.chat_select_model),
-                                tint = pillContentColor,
-                                modifier = Modifier.size(18.dp),
-                            )
+                            state.activeProvider?.let { provider ->
+                                Text(
+                                    text = provider.displayName,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
-                    }
-                },
-            )
+                    },
+                    actions = {
+                        val isUnselected = state.activeModelId.isNullOrBlank()
+                        val isRefreshingAny = state.refreshingProviderIds.isNotEmpty()
+                        val pillInteraction = remember { MutableInteractionSource() }
+                        val pillContentColor = if (isUnselected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isUnselected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                            },
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (isUnselected) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                },
+                            ),
+                            modifier = Modifier
+                                .padding(end = 12.dp)
+                                .heightIn(min = 42.dp)
+                                .widthIn(max = 196.dp)
+                                .pressScale(pillInteraction)
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable(
+                                    interactionSource = pillInteraction,
+                                    indication = androidx.compose.material3.ripple(),
+                                ) {
+                                    if (state.models.isEmpty()) {
+                                        viewModel.refreshAllProviderModels()
+                                    } else {
+                                        viewModel.syncConnectedProviderModels()
+                                    }
+                                    showModelPicker = true
+                                }
+                                .testTag("model_selector_pill"),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (isRefreshingAny && isUnselected) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp,
+                                        color = pillContentColor,
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                } else {
+                                    state.activeProvider?.let {
+                                        ProviderLogoBadge(providerType = it.type, size = 18.dp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
+                                }
+                                Text(
+                                    text = when {
+                                        !state.activeModelId.isNullOrBlank() -> state.activeModelId.orEmpty()
+                                        isRefreshingAny -> stringResource(R.string.chat_loading_models_short)
+                                        else -> stringResource(R.string.chat_select_model)
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = pillContentColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Outlined.ExpandMore,
+                                    contentDescription = stringResource(R.string.chat_select_model),
+                                    tint = pillContentColor,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
         },
         bottomBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .navigationBarsPadding()
-                    .imePadding(),
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val availableHeight = if (maxHeight != Dp.Infinity) maxHeight else 520.dp
-                    val minApprovalHeight = minOf(150.dp, availableHeight * 0.45f)
-                    val approvalMaxHeight = (availableHeight * 0.52f).coerceIn(minApprovalHeight, 360.dp)
-                    Column(
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .imePadding(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    BoxWithConstraints(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = availableHeight)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                            .widthIn(max = 820.dp)
+                            .fillMaxWidth(),
                     ) {
-                if (state.isLoadingAttachment) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-
-                state.unsupportedAttachmentWarning?.let { badType ->
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                        val availableHeight = if (maxHeight != Dp.Infinity) maxHeight else 520.dp
+                        val minApprovalHeight = minOf(150.dp, availableHeight * 0.45f)
+                        val approvalMaxHeight = (availableHeight * 0.52f).coerceIn(minApprovalHeight, 360.dp)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = availableHeight)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.WarningAmber,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(
-                                    R.string.chat_attachment_unsupported_warning,
-                                    state.activeModelId.orEmpty(),
-                                    badType.name.lowercase(),
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.weight(1f),
-                            )
-                            TextButton(onClick = { showModelPicker = true }) {
-                                Text(stringResource(R.string.chat_choose_compatible_model))
+                            AnimatedVisibility(visible = state.isLoadingAttachment) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                             }
-                        }
-                    }
-                }
+
+                            AnimatedVisibility(
+                                visible = state.unsupportedAttachmentWarning != null,
+                                enter = fadeIn(tween(180)) + expandVertically(),
+                                exit = fadeOut(tween(150)) + shrinkVertically(),
+                            ) {
+                                state.unsupportedAttachmentWarning?.let { badType ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.semanticColors.warningContainer,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            MaterialTheme.semanticColors.warning.copy(alpha = 0.28f),
+                                        ),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.WarningAmber,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.semanticColors.warning,
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = stringResource(
+                                                    R.string.chat_attachment_unsupported_warning,
+                                                    state.activeModelId.orEmpty(),
+                                                    badType.name.lowercase(),
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            TextButton(onClick = { showModelPicker = true }) {
+                                                Text(stringResource(R.string.chat_choose_compatible_model))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                 AnimatedVisibility(visible = state.detectedUrls.isNotEmpty()) {
                     Row(
@@ -473,14 +526,19 @@ fun ChatScreen(
                     }
                 }
 
-                state.editingMessage?.let {
+                AnimatedVisibility(
+                    visible = state.editingMessage != null,
+                    enter = fadeIn(tween(180)) + expandVertically(),
+                    exit = fadeOut(tween(150)) + shrinkVertically(),
+                ) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
@@ -489,8 +547,12 @@ fun ChatScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                             )
-                            IconButton(onClick = viewModel::cancelEditMessage, modifier = Modifier.size(28.dp)) {
-                                Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.cd_close), modifier = Modifier.size(16.dp))
+                            IconButton(onClick = viewModel::cancelEditMessage) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Close,
+                                    contentDescription = stringResource(R.string.cd_close),
+                                    modifier = Modifier.size(18.dp),
+                                )
                             }
                         }
                     }
@@ -507,66 +569,81 @@ fun ChatScreen(
                 }
 
                 val activeProvForBanner = state.activeProvider
-                if (state.messages.isNotEmpty() && activeProvForBanner != null && state.activeModelId.isNullOrBlank()) {
-                    val isRefreshingModels = activeProvForBanner.id in state.refreshingProviderIds ||
-                        state.refreshingProviderIds.isNotEmpty()
-                    val activeLoadErrMsg = state.modelLoadErrors[activeProvForBanner.id]?.providerMessage
-                        ?.takeIf { it.isNotBlank() }
-                        ?: activeProvForBanner.lastCheckMessage.takeIf {
-                            activeProvForBanner.status == ProviderStatus.ERROR && it.isNotBlank()
-                        }
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (activeLoadErrMsg != null && !isRefreshingModels) {
-                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
-                        } else {
-                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("chat_model_load_banner"),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            if (isRefreshingModels) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                                Text(
-                                    text = stringResource(R.string.chat_loading_models),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.weight(1f),
-                                )
+                val showLoadBanner = state.messages.isNotEmpty() && activeProvForBanner != null && state.activeModelId.isNullOrBlank()
+                AnimatedVisibility(
+                    visible = showLoadBanner,
+                    enter = fadeIn(tween(180)) + expandVertically(),
+                    exit = fadeOut(tween(150)) + shrinkVertically(),
+                ) {
+                    if (activeProvForBanner != null) {
+                        val isRefreshingModels = activeProvForBanner.id in state.refreshingProviderIds ||
+                            state.refreshingProviderIds.isNotEmpty()
+                        val activeLoadErrMsg = state.modelLoadErrors[activeProvForBanner.id]?.providerMessage
+                            ?.takeIf { it.isNotBlank() }
+                            ?: activeProvForBanner.lastCheckMessage.takeIf {
+                                activeProvForBanner.status == ProviderStatus.ERROR && it.isNotBlank()
+                            }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (activeLoadErrMsg != null && !isRefreshingModels) {
+                                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f)
                             } else {
-                                Text(
-                                    text = if (activeLoadErrMsg != null) {
-                                        stringResource(R.string.chat_models_load_failed, activeLoadErrMsg)
-                                    } else {
-                                        stringResource(
-                                            R.string.chat_no_models_for_provider,
-                                            activeProvForBanner.displayName,
-                                        )
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (activeLoadErrMsg != null) {
-                                        MaterialTheme.colorScheme.onErrorContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.onSecondaryContainer
-                                    },
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                TextButton(
-                                    onClick = { viewModel.refreshAllProviderModels() },
-                                    modifier = Modifier.testTag("chat_load_models_button"),
-                                ) {
-                                    Text(stringResource(R.string.chat_load_models))
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (activeLoadErrMsg != null && !isRefreshingModels) {
+                                    MaterialTheme.colorScheme.error.copy(alpha = 0.28f)
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                },
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("chat_model_load_banner"),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                if (isRefreshingModels) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.chat_loading_models),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                } else {
+                                    Text(
+                                        text = if (activeLoadErrMsg != null) {
+                                            stringResource(R.string.chat_models_load_failed, activeLoadErrMsg)
+                                        } else {
+                                            stringResource(
+                                                R.string.chat_no_models_for_provider,
+                                                activeProvForBanner.displayName,
+                                            )
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (activeLoadErrMsg != null) {
+                                            MaterialTheme.colorScheme.onErrorContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TextButton(
+                                        onClick = { viewModel.refreshAllProviderModels() },
+                                        modifier = Modifier.testTag("chat_load_models_button"),
+                                    ) {
+                                        Text(stringResource(R.string.chat_load_models))
+                                    }
                                 }
                             }
                         }
@@ -581,16 +658,31 @@ fun ChatScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val isChipRefreshing = state.refreshingProviderIds.isNotEmpty() && state.activeModelId.isNullOrBlank()
+                    val modelChipInteraction = remember { MutableInteractionSource() }
+                    val needsModelPick = state.activeModelId.isNullOrBlank()
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = if (state.activeModelId.isNullOrBlank()) {
+                        color = if (needsModelPick) {
                             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
                         } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                            MaterialTheme.colorScheme.surfaceContainerLow
                         },
+                        border = BorderStroke(
+                            1.dp,
+                            if (needsModelPick) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            },
+                        ),
                         modifier = Modifier
+                            .heightIn(min = 38.dp)
+                            .pressScale(modelChipInteraction)
                             .clip(RoundedCornerShape(14.dp))
-                            .clickable {
+                            .clickable(
+                                interactionSource = modelChipInteraction,
+                                indication = androidx.compose.material3.ripple(),
+                            ) {
                                 if (state.models.isEmpty()) {
                                     viewModel.refreshAllProviderModels()
                                 } else {
@@ -601,7 +693,7 @@ fun ChatScreen(
                             .testTag("composer_model_selector"),
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
@@ -635,7 +727,11 @@ fun ChatScreen(
                                     )
                                 },
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (needsModelPick) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.widthIn(max = 220.dp),
@@ -651,6 +747,7 @@ fun ChatScreen(
 
                     val ghConnected = state.gitHubSettings.isConnected
                     val ghActive = state.isGitHubToolsActiveInChat
+                    val ghChipInteraction = remember { MutableInteractionSource() }
                     val ghChipText = when {
                         !ghConnected -> stringResource(R.string.github_title)
                         !state.effectiveGitHubRepo.isNullOrBlank() -> {
@@ -662,13 +759,26 @@ fun ChatScreen(
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = if (ghConnected && ghActive) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
                         } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+                            MaterialTheme.colorScheme.surfaceContainerLow
                         },
+                        border = BorderStroke(
+                            1.dp,
+                            if (ghConnected && ghActive) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            },
+                        ),
                         modifier = Modifier
+                            .heightIn(min = 38.dp)
+                            .pressScale(ghChipInteraction)
                             .clip(RoundedCornerShape(14.dp))
-                            .clickable {
+                            .clickable(
+                                interactionSource = ghChipInteraction,
+                                indication = androidx.compose.material3.ripple(),
+                            ) {
                                 if (ghConnected) {
                                     viewModel.loadGitHubPickerData()
                                     showGitHubSheet = true
@@ -679,7 +789,7 @@ fun ChatScreen(
                             .testTag("github_chat_chip"),
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(5.dp),
                         ) {
@@ -712,7 +822,7 @@ fun ChatScreen(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Box {
                         IconButton(
@@ -722,6 +832,7 @@ fun ChatScreen(
                             Icon(
                                 imageVector = Icons.Outlined.AttachFile,
                                 contentDescription = stringResource(R.string.chat_attach),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         DropdownMenu(
@@ -767,49 +878,77 @@ fun ChatScreen(
                     OutlinedTextField(
                         value = state.inputText,
                         onValueChange = viewModel::updateInputText,
-                        placeholder = { Text(stringResource(R.string.chat_input_hint)) },
+                        placeholder = {
+                            Text(
+                                text = stringResource(R.string.chat_input_hint),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
                         maxLines = 5,
                         shape = RoundedCornerShape(22.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        ),
                         modifier = Modifier
                             .weight(1f)
                             .testTag("chat_message_input"),
                     )
 
-                    if (state.isGenerating) {
-                        FilledIconButton(
-                            onClick = viewModel::stopGeneration,
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.error,
-                            ),
-                            modifier = Modifier
-                                .size(48.dp)
-                                .testTag("stop_generation_button"),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Stop,
-                                contentDescription = stringResource(R.string.chat_stop),
-                            )
-                        }
-                    } else {
-                        val canSend = (state.inputText.isNotBlank() || state.stagedAttachments.isNotEmpty()) &&
-                            state.activeProvider != null && !state.activeModelId.isNullOrBlank()
-                        FilledIconButton(
-                            onClick = viewModel::sendMessage,
-                            enabled = canSend,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .testTag("send_message_button"),
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.Send,
-                                contentDescription = stringResource(R.string.chat_send),
-                            )
+                    AnimatedContent(
+                        targetState = state.isGenerating,
+                        transitionSpec = {
+                            (fadeIn(tween(160)) + scaleIn(initialScale = 0.88f, animationSpec = tween(160)))
+                                .togetherWith(fadeOut(tween(120)) + scaleOut(targetScale = 0.88f, animationSpec = tween(120)))
+                        },
+                        label = "send_stop_transition",
+                    ) { generating ->
+                        if (generating) {
+                            val stopInteraction = remember { MutableInteractionSource() }
+                            FilledIconButton(
+                                onClick = viewModel::stopGeneration,
+                                interactionSource = stopInteraction,
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .pressScale(stopInteraction)
+                                    .testTag("stop_generation_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Stop,
+                                    contentDescription = stringResource(R.string.chat_stop),
+                                )
+                            }
+                        } else {
+                            val canSend = (state.inputText.isNotBlank() || state.stagedAttachments.isNotEmpty()) &&
+                                state.activeProvider != null && !state.activeModelId.isNullOrBlank()
+                            val sendInteraction = remember { MutableInteractionSource() }
+                            FilledIconButton(
+                                onClick = viewModel::sendMessage,
+                                enabled = canSend,
+                                interactionSource = sendInteraction,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .pressScale(sendInteraction, enabled = canSend)
+                                    .testTag("send_message_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.Send,
+                                    contentDescription = stringResource(R.string.chat_send),
+                                )
+                            }
                         }
                     }
                 }
-            }
-            }
+                        }
+                    }
+                }
             }
         },
     ) { innerPadding ->
@@ -823,22 +962,12 @@ fun ChatScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp),
+                    EmptyStatePanel(
+                        icon = Icons.Outlined.ChatBubbleOutline,
+                        title = stringResource(R.string.chats_no_provider_title),
+                        subtitle = stringResource(R.string.chats_no_provider_subtitle),
                     ) {
-                        Text(
-                            text = stringResource(R.string.chats_no_provider_title),
-                            style = MaterialTheme.typography.titleLarge,
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = stringResource(R.string.chats_no_provider_subtitle),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        TextButton(onClick = onOpenProviders) {
+                        FilledTonalButton(onClick = onOpenProviders) {
                             Text(stringResource(R.string.providers_onboarding_title))
                         }
                     }
@@ -857,19 +986,16 @@ fun ChatScreen(
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp),
+                        modifier = Modifier
+                            .widthIn(max = 460.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(24.dp),
                     ) {
-                        Text(
-                            text = stringResource(R.string.chats_empty_title),
-                            style = MaterialTheme.typography.titleLarge,
+                        EmptyStatePanel(
+                            icon = Icons.Outlined.ChatBubbleOutline,
+                            title = stringResource(R.string.chats_empty_title),
+                            subtitle = stringResource(R.string.chats_empty_subtitle),
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = stringResource(R.string.chats_empty_subtitle),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
                         if (isRefreshingActive) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -892,12 +1018,12 @@ fun ChatScreen(
                                 onCopied = {
                                     scope.launch { snackbarHostState.showSnackbar(errorCopiedMessage) }
                                 },
-                                modifier = Modifier.widthIn(max = 480.dp),
+                                modifier = Modifier.widthIn(max = 460.dp),
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                         }
                         FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             if (activeProvModels.isEmpty() || state.activeModelId.isNullOrBlank()) {
@@ -948,59 +1074,67 @@ fun ChatScreen(
                     }
                 }
             } else {
-                LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                Box(
                     modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.TopCenter,
                 ) {
-                    items(state.messages, key = { it.id }) { msg ->
-                        ChatMessageBubble(
-                            message = msg,
-                            onCopyText = {
-                                clipboard.setText(AnnotatedString(msg.content))
-                                scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
-                            },
-                            onRetry = { viewModel.retryAssistantMessage(msg) },
-                            onEditUser = { viewModel.startEditUserMessage(msg) },
-                            onDelete = { viewModel.deleteMessage(msg.id) },
-                            onImageClick = { uri ->
-                                val idx = allChatImageUris.indexOf(uri).coerceAtLeast(0)
-                                onOpenImageViewer(allChatImageUris.ifEmpty { listOf(uri) }, idx)
-                            },
-                            onOpenDocument = { att ->
-                                runCatching {
-                                    val intent = viewModel.createOpenDocumentIntent(att)
-                                    context.startActivity(intent)
-                                }.onFailure {
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(it.message ?: "No viewer found")
+                    LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier
+                            .widthIn(max = 820.dp)
+                            .fillMaxSize(),
+                    ) {
+                        items(state.messages, key = { it.id }) { msg ->
+                            ChatMessageBubble(
+                                message = msg,
+                                onCopyText = {
+                                    clipboard.setText(AnnotatedString(msg.content))
+                                    scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
+                                },
+                                onRetry = { viewModel.retryAssistantMessage(msg) },
+                                onEditUser = { viewModel.startEditUserMessage(msg) },
+                                onDelete = { viewModel.deleteMessage(msg.id) },
+                                onImageClick = { uri ->
+                                    val idx = allChatImageUris.indexOf(uri).coerceAtLeast(0)
+                                    onOpenImageViewer(allChatImageUris.ifEmpty { listOf(uri) }, idx)
+                                },
+                                onOpenDocument = { att ->
+                                    runCatching {
+                                        val intent = viewModel.createOpenDocumentIntent(att)
+                                        context.startActivity(intent)
+                                    }.onFailure {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar(it.message ?: "No viewer found")
+                                        }
                                     }
-                                }
-                            },
-                            onOpenUrl = { url ->
-                                runCatching {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                }
-                            },
-                            onSaveMedia = { gm -> triggerSaveMedia(gm) },
-                            onShareMedia = { gm ->
-                                context.startActivity(
-                                    viewModel.createShareMediaIntent(gm, context.getString(R.string.action_share)),
-                                )
-                            },
-                            onOpenVideo = { gm ->
-                                val u = gm.localUri.ifBlank { gm.remoteUrl }
-                                if (u.isNotBlank()) onOpenVideoViewer(u)
-                            },
-                            onCopyLink = { url ->
-                                clipboard.setText(AnnotatedString(url))
-                                scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
-                            },
-                            onErrorCopied = {
-                                scope.launch { snackbarHostState.showSnackbar(errorCopiedMessage) }
-                            },
-                        )
+                                },
+                                onOpenUrl = { url ->
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                    }
+                                },
+                                onSaveMedia = { gm -> triggerSaveMedia(gm) },
+                                onShareMedia = { gm ->
+                                    context.startActivity(
+                                        viewModel.createShareMediaIntent(gm, context.getString(R.string.action_share)),
+                                    )
+                                },
+                                onOpenVideo = { gm ->
+                                    val u = gm.localUri.ifBlank { gm.remoteUrl }
+                                    if (u.isNotBlank()) onOpenVideoViewer(u)
+                                },
+                                onCopyLink = { url ->
+                                    clipboard.setText(AnnotatedString(url))
+                                    scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
+                                },
+                                onErrorCopied = {
+                                    scope.launch { snackbarHostState.showSnackbar(errorCopiedMessage) }
+                                },
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
                     }
                 }
             }
@@ -1051,10 +1185,11 @@ private fun StagedAttachmentChip(
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(start = 8.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -1073,16 +1208,19 @@ private fun StagedAttachmentChip(
                     imageVector = if (attachment.mimeType.contains("pdf")) Icons.Outlined.PictureAsPdf else Icons.AutoMirrored.Outlined.InsertDriveFile,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary,
                 )
                 AttachmentType.TEXT_FILE -> Icon(
                     imageVector = Icons.Outlined.Description,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary,
                 )
                 AttachmentType.WEB_LINK -> Icon(
                     imageVector = Icons.Outlined.Link,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary,
                 )
             }
             Text(
@@ -1092,8 +1230,8 @@ private fun StagedAttachmentChip(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 130.dp),
             )
-            IconButton(onClick = onRemove, modifier = Modifier.size(22.dp)) {
-                Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.cd_close), modifier = Modifier.size(14.dp))
+            IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.cd_close), modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -1115,19 +1253,20 @@ private fun ChatMessageBubble(
     onOpenVideo: (GeneratedMedia) -> Unit,
     onCopyLink: (String) -> Unit,
     onErrorCopied: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val isUser = message.role == MessageRole.USER
     val context = LocalContext.current
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
         if (!isUser && (message.providerName.isNotBlank() || message.modelId.isNotBlank())) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(start = 4.dp, bottom = 3.dp),
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
             ) {
                 Text(
                     text = listOf(message.providerName, message.modelId)
@@ -1135,6 +1274,9 @@ private fun ChatMessageBubble(
                         .joinToString(" • "),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 MessageStatusLabel(status = message.status)
             }
@@ -1152,11 +1294,19 @@ private fun ChatMessageBubble(
             } else {
                 MaterialTheme.colorScheme.surface
             },
-            tonalElevation = if (isUser) 0.dp else 1.dp,
-            modifier = Modifier.widthIn(max = 600.dp),
+            border = BorderStroke(
+                width = 1.dp,
+                color = if (isUser) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant
+                },
+            ),
+            tonalElevation = 0.dp,
+            modifier = Modifier.widthIn(max = 620.dp),
         ) {
             Column(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 // Attachments in bubble
@@ -1377,45 +1527,45 @@ private fun ChatMessageBubble(
             }
         }
 
-        // Message action row
+        // Message action row (48dp default IconButton touch targets)
         Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(0.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (message.content.isNotBlank()) {
-                IconButton(onClick = onCopyText, modifier = Modifier.size(34.dp)) {
+                IconButton(onClick = onCopyText) {
                     Icon(
                         imageVector = Icons.Outlined.ContentCopy,
                         contentDescription = stringResource(R.string.chat_copy_message),
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             if (isUser) {
-                IconButton(onClick = onEditUser, modifier = Modifier.size(34.dp)) {
+                IconButton(onClick = onEditUser) {
                     Icon(
                         imageVector = Icons.Outlined.Edit,
                         contentDescription = stringResource(R.string.chat_edit_message),
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             } else if (message.status == MessageStatus.ERROR || message.status == MessageStatus.CANCELLED || message.status == MessageStatus.COMPLETED) {
-                IconButton(onClick = onRetry, modifier = Modifier.size(34.dp)) {
+                IconButton(onClick = onRetry) {
                     Icon(
                         imageVector = Icons.Outlined.Refresh,
                         contentDescription = stringResource(R.string.action_retry),
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
+            IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Outlined.DeleteOutline,
                     contentDescription = stringResource(R.string.action_delete),
-                    modifier = Modifier.size(16.dp),
+                    modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -1454,8 +1604,9 @@ internal fun GitHubApprovalBannerCard(
     maxCardHeight: Dp = 360.dp,
 ) {
     Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
         modifier = modifier
             .fillMaxWidth()
             .heightIn(max = maxCardHeight)
@@ -1464,7 +1615,7 @@ internal fun GitHubApprovalBannerCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
@@ -1475,13 +1626,13 @@ internal fun GitHubApprovalBannerCard(
                 Icon(
                     imageVector = Icons.Outlined.Code,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                    tint = MaterialTheme.colorScheme.primary,
                 )
                 Text(
                     text = stringResource(R.string.github_approval_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1489,13 +1640,13 @@ internal fun GitHubApprovalBannerCard(
                 if (approval.actions.size > 1) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.14f),
+                        color = MaterialTheme.colorScheme.primaryContainer,
                     ) {
                         Text(
                             text = "${approval.actions.size}",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                         )
                     }
@@ -1515,19 +1666,20 @@ internal fun GitHubApprovalBannerCard(
                             text = action.title,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         if (action.summary.isNotBlank()) {
                             Text(
                                 text = action.summary,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         if (action.previewContent.isNotBlank()) {
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(max = 160.dp),
@@ -1537,12 +1689,12 @@ internal fun GitHubApprovalBannerCard(
                                         .fillMaxWidth()
                                         .verticalScroll(rememberScrollState())
                                         .horizontalScroll(rememberScrollState())
-                                        .padding(8.dp),
+                                        .padding(10.dp),
                                 ) {
                                     Text(
                                         text = action.previewContent,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontFamily = FontFamily.Monospace,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoFontFamily),
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                             }
@@ -1602,6 +1754,7 @@ private fun ChatGitHubPickerSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
     ) {
         Column(
             modifier = Modifier
@@ -1631,7 +1784,7 @@ private fun ChatGitHubPickerSheet(
                 Text(
                     text = stringResource(R.string.github_chat_tools_toggle),
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).padding(end = 12.dp),
                 )
                 Switch(
                     checked = toolsEnabledInChat,
@@ -1665,12 +1818,25 @@ private fun ChatGitHubPickerSheet(
                 onValueChange = { search = it },
                 placeholder = { Text(stringResource(R.string.github_search_repos_hint)) },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (search.isNotEmpty()) {
+                        IconButton(onClick = { search = "" }) {
+                            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.cd_close))
+                        }
+                    }
+                },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            if (isLoading) {
+            AnimatedVisibility(visible = isLoading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
@@ -1682,27 +1848,38 @@ private fun ChatGitHubPickerSheet(
                 }
             }
 
-            HorizontalDivider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 320.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
                 items(filtered, key = { it.id }) { repo ->
                     val isSelected = selectedRepo.equals(repo.fullName, ignoreCase = true)
+                    val repoInteraction = remember { MutableInteractionSource() }
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = if (isSelected) {
-                            MaterialTheme.colorScheme.primaryContainer
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                         } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            MaterialTheme.colorScheme.surfaceContainerLow
                         },
+                        border = BorderStroke(
+                            1.dp,
+                            if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
+                            .animateItem()
+                            .pressScale(repoInteraction)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(
+                                interactionSource = repoInteraction,
+                                indication = androidx.compose.material3.ripple(),
+                            ) {
                                 onSelectRepo(repo.fullName, repo.defaultBranch)
                             },
                     ) {
@@ -1716,6 +1893,7 @@ private fun ChatGitHubPickerSheet(
                                     text = repo.fullName,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
                                     text = repo.defaultBranch,

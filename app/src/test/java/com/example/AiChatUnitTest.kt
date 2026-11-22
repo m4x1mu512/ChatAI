@@ -277,4 +277,69 @@ class AiChatUnitTest {
         assertEquals("qwen2.5-coder:7b", parsed[1].modelId)
         assertEquals("Qwen 2.5 Coder", parsed[1].displayName)
     }
+
+    @Test
+    fun `error parser parses gemini array wrapped 400 INVALID_ARGUMENT response`() {
+        val body = """
+            [{
+              "error": {
+                "code": 400,
+                "message": "Request contains an invalid argument.",
+                "status": "INVALID_ARGUMENT"
+              }
+            }]
+        """.trimIndent()
+        val err = ErrorParser.fromHttpResponse(
+            statusCode = 400,
+            body = body,
+            providerName = "Google Gemini",
+            modelId = "gemini-4-hydrogen",
+            endpointUrl = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        )
+        assertEquals("INVALID_ARGUMENT", err.errorCode)
+        assertEquals("Request contains an invalid argument.", err.providerMessage)
+    }
+
+    @Test
+    fun `gemini openai strips models prefix and filters embedding models`() {
+        val geminiConfig = ProviderConfig(
+            id = "gem-1",
+            type = ProviderType.GOOGLE_GEMINI,
+            displayName = "Google Gemini",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai",
+        )
+        assertEquals(
+            "gemini-4-hydrogen",
+            OpenAiCompatibleProvider.normalizeModelIdForRequest(
+                geminiConfig,
+                geminiConfig.baseUrl,
+                "models/gemini-4-hydrogen",
+            ),
+        )
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            OpenAiCompatibleProvider.resolveOpenAiBaseUrl(
+                geminiConfig,
+                "https://generativelanguage.googleapis.com/v1beta",
+            ),
+        )
+
+        val geminiModelsJson = """
+            {
+              "object": "list",
+              "data": [
+                {"id": "models/gemini-2.5-flash", "object": "model", "owned_by": "google"},
+                {"id": "models/gemini-embedding-001", "object": "model", "owned_by": "google"},
+                {"id": "models/aqa", "object": "model", "owned_by": "google"}
+              ]
+            }
+        """.trimIndent()
+        val parsed = OpenAiCompatibleProvider.parseModelsJson(
+            providerId = "gem-1",
+            bodyStr = geminiModelsJson,
+            stripModelsPrefix = true,
+        )
+        assertEquals(listOf("gemini-2.5-flash"), parsed.map { it.modelId })
+    }
 }

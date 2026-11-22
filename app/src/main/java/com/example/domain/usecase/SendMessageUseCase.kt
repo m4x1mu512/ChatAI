@@ -500,7 +500,13 @@ class SendMessageUseCase @Inject constructor(
                 val msgLower = "${err.errorCode} ${err.providerMessage} ${err.technicalDetails}".lowercase()
                 val toolsUnsupported = useNativeTools &&
                     (err.httpStatus == 400 || err.httpStatus == 422 || err.httpStatus == 404) &&
-                    (msgLower.contains("tool") || msgLower.contains("function") || msgLower.contains("unsupported"))
+                    (
+                        msgLower.contains("tool") ||
+                            msgLower.contains("function") ||
+                            msgLower.contains("unsupported") ||
+                            msgLower.contains("invalid_argument") ||
+                            msgLower.contains("invalid argument")
+                        )
                 if (toolsUnsupported) {
                     useNativeTools = false
                     toolActionTrace.appendLine("GitHub: switching to text tool mode for this model.")

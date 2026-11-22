@@ -1,6 +1,10 @@
 package com.example.ui.screens.models
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -16,28 +20,32 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
@@ -56,7 +65,9 @@ import com.example.core.model.AiModelInfo
 import com.example.core.model.ProviderConfig
 import com.example.core.model.ProviderStatus
 import com.example.ui.components.CapabilityBadge
+import com.example.ui.components.EmptyStatePanel
 import com.example.ui.components.ProviderLogoBadge
+import com.example.ui.components.pressScale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -111,11 +122,12 @@ fun ModelPickerSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 620.dp)
+                .heightIn(max = 640.dp)
                 .padding(horizontal = 16.dp),
         ) {
             Row(
@@ -156,10 +168,29 @@ fun ModelPickerSheet(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text(stringResource(R.string.models_search_hint)) },
+                placeholder = {
+                    Text(
+                        text = stringResource(R.string.models_search_hint),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.cd_close))
+                        }
+                    }
+                },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("model_search_input"),
@@ -201,19 +232,13 @@ fun ModelPickerSheet(
             Spacer(modifier = Modifier.height(10.dp))
 
             if (enabledProviders.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                EmptyStatePanel(
+                    icon = Icons.Outlined.Tune,
+                    title = stringResource(R.string.models_empty),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(
-                        text = stringResource(R.string.models_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                     if (onOpenProviders != null) {
-                        Button(
+                        FilledTonalButton(
                             onClick = {
                                 onDismiss()
                                 onOpenProviders()
@@ -257,15 +282,12 @@ fun ModelPickerSheet(
                                         if (isRefreshing) {
                                             CircularProgressIndicator(
                                                 modifier = Modifier
-                                                    .padding(horizontal = 8.dp)
-                                                    .size(16.dp),
+                                                    .padding(horizontal = 14.dp)
+                                                    .size(18.dp),
                                                 strokeWidth = 2.dp,
                                             )
                                         } else {
-                                            IconButton(
-                                                onClick = { onRefreshModels(provider.id) },
-                                                modifier = Modifier.size(36.dp),
-                                            ) {
+                                            IconButton(onClick = { onRefreshModels(provider.id) }) {
                                                 Icon(
                                                     imageVector = Icons.Outlined.Refresh,
                                                     contentDescription = stringResource(R.string.provider_models_refresh),
@@ -281,8 +303,11 @@ fun ModelPickerSheet(
                                         },
                                     ) {
                                         Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(2.dp))
-                                        Text(stringResource(R.string.provider_add_manual_model), style = MaterialTheme.typography.labelSmall)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = stringResource(R.string.provider_add_manual_model),
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
                                     }
                                 }
                             }
@@ -320,13 +345,14 @@ fun ModelPickerSheet(
                                     errMsg != null -> {
                                         Surface(
                                             shape = RoundedCornerShape(12.dp),
-                                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f),
+                                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.28f)),
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .padding(start = 8.dp, bottom = 4.dp),
                                         ) {
                                             Column(
-                                                modifier = Modifier.padding(10.dp),
+                                                modifier = Modifier.padding(12.dp),
                                                 verticalArrangement = Arrangement.spacedBy(6.dp),
                                             ) {
                                                 Text(
@@ -386,48 +412,67 @@ fun ModelPickerSheet(
                         } else {
                             items(providerModels, key = { "m_${provider.id}_${it.modelId}" }) { model ->
                                 val isSelected = provider.id == selectedProviderId && model.modelId == selectedModelId
+                                val itemInteraction = remember { MutableInteractionSource() }
                                 Surface(
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     color = if (isSelected) {
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
                                     } else {
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                        MaterialTheme.colorScheme.surfaceContainerLow
                                     },
+                                    border = BorderStroke(
+                                        width = 1.dp,
+                                        color = if (isSelected) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.outlineVariant
+                                        },
+                                    ),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
+                                        .animateItem()
+                                        .pressScale(itemInteraction)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .clickable(
+                                            interactionSource = itemInteraction,
+                                            indication = ripple(),
+                                        ) {
                                             onSelectModel(provider, model)
                                             onDismiss()
                                         }
                                         .testTag("model_item_${model.modelId}"),
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = model.displayName,
                                                 style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            FlowRow(
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                                            ) {
-                                                model.capabilities.forEach { cap ->
-                                                    CapabilityBadge(capability = cap)
+                                            if (model.capabilities.isNotEmpty()) {
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                FlowRow(
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                                ) {
+                                                    model.capabilities.forEach { cap ->
+                                                        CapabilityBadge(capability = cap)
+                                                    }
                                                 }
                                             }
                                         }
-                                        if (isSelected) {
+                                        AnimatedVisibility(visible = isSelected) {
                                             Icon(
                                                 imageVector = Icons.Outlined.Check,
                                                 contentDescription = null,
                                                 tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(start = 8.dp),
                                             )
                                         }
                                     }
@@ -443,6 +488,7 @@ fun ModelPickerSheet(
     manualDialogProvider?.let { target ->
         AlertDialog(
             onDismissRequest = { manualDialogProvider = null },
+            containerColor = MaterialTheme.colorScheme.surface,
             title = { Text(stringResource(R.string.provider_manual_model_title)) },
             text = {
                 OutlinedTextField(
@@ -450,17 +496,19 @@ fun ModelPickerSheet(
                     onValueChange = { manualModelText = it },
                     label = { Text(stringResource(R.string.provider_manual_model_hint)) },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth(),
                 )
             },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         if (manualModelText.isNotBlank()) {
                             onAddManualModel(target.id, manualModelText.trim())
                         }
                         manualDialogProvider = null
                     },
+                    enabled = manualModelText.isNotBlank(),
                 ) {
                     Text(stringResource(R.string.action_confirm))
                 }
