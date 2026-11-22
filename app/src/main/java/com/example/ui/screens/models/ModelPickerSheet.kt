@@ -127,8 +127,8 @@ fun ModelPickerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 640.dp)
-                .padding(horizontal = 16.dp),
+                .heightIn(max = 760.dp)
+                .padding(horizontal = 20.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -137,7 +137,8 @@ fun ModelPickerSheet(
             ) {
                 Text(
                     text = stringResource(R.string.models_picker_title),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
                 if (onRefreshAll != null && enabledProviders.isNotEmpty()) {
@@ -184,7 +185,7 @@ fun ModelPickerSheet(
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,

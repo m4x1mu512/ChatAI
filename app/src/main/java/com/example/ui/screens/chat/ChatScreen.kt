@@ -292,8 +292,8 @@ fun ChatScreen(
             Column {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        scrolledContainerColor = MaterialTheme.colorScheme.background,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
                     ),
                     navigationIcon = {
                         if (showBackButton) {
@@ -407,13 +407,13 @@ fun ChatScreen(
                         }
                     },
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f))
             }
         },
         bottomBar = {
             Surface(
-                color = MaterialTheme.colorScheme.background,
-                tonalElevation = 0.dp,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
@@ -436,7 +436,7 @@ fun ChatScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(max = availableHeight)
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             AnimatedVisibility(visible = state.isLoadingAttachment) {
@@ -823,7 +823,7 @@ fun ChatScreen(
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(26.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                     border = BorderStroke(
                         1.dp,
@@ -1095,8 +1095,8 @@ fun ChatScreen(
                 ) {
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = Modifier
                             .widthIn(max = 820.dp)
                             .fillMaxSize(),

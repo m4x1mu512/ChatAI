@@ -234,8 +234,8 @@ fun AiChatAppRoot(
         ) {
             if (showTopLevelNav && isExpanded) {
                 NavigationRail(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    modifier = Modifier.fillMaxHeight(),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxHeight().width(88.dp),
                 ) {
                     NavigationRailItem(
                         selected = activeTab == TopTab.CHATS,

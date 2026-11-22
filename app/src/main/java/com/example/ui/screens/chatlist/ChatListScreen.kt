@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.MoreVert
@@ -105,10 +106,26 @@ fun ChatListScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.chats_title),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = stringResource(R.string.chats_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = stringResource(if (state.showArchived) R.string.chats_tab_archived else R.string.chats_tab_active),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { viewModel.createNewChat(untitled, onOpenChat) },
+                        modifier = Modifier.testTag("new_chat_toolbar_button"),
+                    ) {
+                        Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.chats_new), tint = MaterialTheme.colorScheme.primary)
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -137,7 +154,7 @@ fun ChatListScreen(
                 modifier = Modifier
                     .widthIn(max = 720.dp)
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 18.dp),
             ) {
                 OutlinedTextField(
                     value = state.searchQuery,
@@ -269,8 +286,8 @@ fun ChatListScreen(
                     }
                 } else {
                     LazyColumn(
-                        contentPadding = PaddingValues(bottom = 96.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(top = 4.dp, bottom = 104.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         if (pinned.isNotEmpty()) {
                             item(key = "hdr_pinned") {
@@ -404,20 +421,20 @@ private fun ChatRowCard(
     }
 
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(15.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
-                MaterialTheme.colorScheme.surfaceContainerLow
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
             } else {
-                MaterialTheme.colorScheme.background
+                MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f)
             },
         ),
         border = BorderStroke(
             width = 1.dp,
             color = if (isSelected) {
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
             } else {
-                Color.Transparent
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f)
             },
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -435,9 +452,25 @@ private fun ChatRowCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 6.dp),
+                .padding(start = 10.dp, top = 12.dp, bottom = 12.dp, end = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Surface(
+                shape = RoundedCornerShape(11.dp),
+                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                    else MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier.size(38.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Outlined.ChatBubbleOutline,
+                        contentDescription = null,
+                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(11.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (chat.isPinned) {
