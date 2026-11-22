@@ -1006,11 +1006,22 @@ fun ChatScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(24.dp),
                     ) {
-                        EmptyStatePanel(
-                            icon = Icons.Outlined.ChatBubbleOutline,
-                            title = stringResource(R.string.chats_empty_title),
-                            subtitle = stringResource(R.string.chats_empty_subtitle),
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            Text(
+                                text = "💬",
+                                style = MaterialTheme.typography.displayMedium,
+                            )
+                            Text(
+                                text = "Чем я могу вам помочь сегодня?",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                        }
                         if (isRefreshingActive) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
