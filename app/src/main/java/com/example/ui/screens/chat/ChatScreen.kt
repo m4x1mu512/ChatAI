@@ -72,6 +72,8 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
@@ -86,6 +88,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
@@ -96,6 +99,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -110,6 +115,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -134,6 +140,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.core.model.Attachment
@@ -155,6 +162,7 @@ import com.example.ui.components.ProviderLogoBadge
 import com.example.ui.components.SkeletonShimmerBlock
 import com.example.ui.components.pressScale
 import com.example.ui.screens.models.ModelPickerSheet
+import com.example.ui.screens.chatlist.ChatListViewModel
 import com.example.ui.theme.MonoFontFamily
 import com.example.ui.theme.semanticColors
 import kotlinx.coroutines.launch
@@ -169,9 +177,13 @@ fun ChatScreen(
     onOpenVideoViewer: (videoUri: String) -> Unit,
     onOpenProviders: () -> Unit,
     onOpenGitHub: () -> Unit,
+    onOpenChat: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val chatListViewModel: ChatListViewModel = hiltViewModel()
+    val chatListState by chatListViewModel.uiState.collectAsStateWithLifecycle()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -285,6 +297,120 @@ fun ChatScreen(
         }
     }
 
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = true,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.width(320.dp),
+                drawerContainerColor = MaterialTheme.colorScheme.surface,
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 22.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(shape = RoundedCornerShape(7.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(32.dp)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text("Chatbox", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    }
+                    OutlinedTextField(
+                        value = chatListState.searchQuery,
+                        onValueChange = chatListViewModel::updateSearchQuery,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text(stringResource(R.string.chats_search_hint)) },
+                        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            focusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            unfocusedBorderColor = Color.Transparent,
+                        ),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                            .clickable { scope.launch { drawerState.close(); onOpenGitHub() } }
+                            .padding(horizontal = 10.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Outlined.Code, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(14.dp))
+                        Text("GitHub", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    if (chatListState.chats.any { it.isPinned }) {
+                        Text(stringResource(R.string.chats_pinned), style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp, start = 4.dp))
+                        LazyColumn(modifier = Modifier.weight(0.38f), contentPadding = PaddingValues(bottom = 4.dp)) {
+                            items(chatListState.chats.filter { it.isPinned }, key = { "drawer_pin_${it.id}" }) { chat ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                        .clickable { scope.launch { drawerState.close(); onOpenChat(chat.id) } }
+                                        .padding(horizontal = 8.dp, vertical = 11.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(Modifier.width(14.dp))
+                                    Text(chat.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+                                }
+                            }
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.chats_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.weight(1f))
+                        Icon(Icons.Outlined.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(bottom = 8.dp)) {
+                        items(chatListState.chats.filter { !it.isPinned }, key = { "drawer_chat_${it.id}" }) { chat ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                    .clickable { scope.launch { drawerState.close(); onOpenChat(chat.id) } }
+                                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.width(14.dp))
+                                Text(chat.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                    Button(
+                        onClick = {
+                            chatListViewModel.createNewChat(context.getString(R.string.chats_untitled)) { id ->
+                                scope.launch { drawerState.close(); onOpenChat(id) }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(54.dp),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Icon(Icons.Outlined.Add, contentDescription = null)
+                        Spacer(Modifier.width(10.dp))
+                        Text(stringResource(R.string.chats_new))
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { scope.launch { drawerState.close(); onOpenProviders() } }
+                            .padding(horizontal = 8.dp, vertical = 17.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Outlined.SettingsEthernet, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(14.dp))
+                        Text(stringResource(R.string.nav_providers), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        },
+    ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
@@ -297,13 +423,8 @@ fun ChatScreen(
                         scrolledContainerColor = MaterialTheme.colorScheme.surface,
                     ),
                     navigationIcon = {
-                        if (showBackButton) {
-                            IconButton(onClick = onBack) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                                    contentDescription = stringResource(R.string.cd_back),
-                                )
-                            }
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(imageVector = Icons.Outlined.Menu, contentDescription = "Открыть меню")
                         }
                     },
                     title = {
@@ -1165,6 +1286,8 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
     }
 
     if (showModelPicker) {

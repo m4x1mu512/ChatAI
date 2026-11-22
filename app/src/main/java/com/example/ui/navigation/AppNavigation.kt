@@ -364,6 +364,7 @@ fun AiChatAppRoot(
                                         },
                                         onOpenProviders = { navigateTopTab(TopTab.PROVIDERS) },
                                         onOpenGitHub = { navController.navigate(GitHubRoute) },
+                                        onOpenChat = { id -> navController.navigate(ChatDetailRoute(id)) },
                                     )
                                 } else {
                                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -413,6 +414,7 @@ fun AiChatAppRoot(
                         },
                         onOpenProviders = { navigateTopTab(TopTab.PROVIDERS) },
                         onOpenGitHub = { navController.navigate(GitHubRoute) },
+                        onOpenChat = { id -> navController.navigate(ChatDetailRoute(id)) },
                     )
                 }
 
