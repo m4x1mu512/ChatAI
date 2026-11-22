@@ -29,6 +29,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -39,10 +40,12 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSource
+import java.util.Base64
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -483,6 +486,150 @@ class OpenAiCompatibleProvider @Inject constructor(
             val lower = modelId.lowercase().removePrefix("models/")
             return lower.contains("embedding") || lower == "aqa"
         }
+
+        internal data class ExtractedImagePayload(
+            val base64: String? = null,
+            val remoteUrl: String = "",
+            val isExplicitFailure: Boolean = false,
+        )
+
+        internal fun isCloudflareEndpoint(config: ProviderConfig, baseOrUrl: String): Boolean =
+            config.type == ProviderType.CLOUDFLARE ||
+                baseOrUrl.contains("api.cloudflare.com", ignoreCase = true) ||
+                CLOUDFLARE_AI_V1_REGEX.containsMatchIn(baseOrUrl)
+
+        internal fun resolveImageEndpointUrl(
+            config: ProviderConfig,
+            normalizedBase: String,
+            modelId: String,
+        ): Pair<String, Boolean> {
+            val cleanModelPath = modelId.trim().trimStart('/')
+            val cfMatch = CLOUDFLARE_AI_V1_REGEX.matchEntire(normalizedBase)
+            if (cfMatch != null) {
+                return "${cfMatch.groupValues[1]}/run/$cleanModelPath" to true
+            }
+            if (isCloudflareEndpoint(config, normalizedBase)) {
+                val aiRoot = when {
+                    normalizedBase.endsWith("/ai/v1", ignoreCase = true) -> normalizedBase.dropLast(3)
+                    normalizedBase.endsWith("/workers-ai/v1", ignoreCase = true) -> normalizedBase.dropLast(3)
+                    normalizedBase.endsWith("/ai", ignoreCase = true) -> normalizedBase
+                    normalizedBase.endsWith("/workers-ai", ignoreCase = true) -> normalizedBase
+                    else -> null
+                }
+                if (aiRoot != null) {
+                    return "$aiRoot/run/$cleanModelPath" to true
+                }
+            }
+            val chatBase = resolveOpenAiBaseUrl(config, normalizedBase)
+            return "$chatBase/images/generations" to false
+        }
+
+        internal fun requiresCloudflareMultipartImageRequest(modelId: String): Boolean =
+            modelId.contains("flux-2", ignoreCase = true)
+
+        internal fun isJsonResponse(bytes: ByteArray, contentType: String): Boolean {
+            val ct = contentType.lowercase()
+            if (ct.contains("json")) return true
+            if (ct.startsWith("image/")) return false
+            for (b in bytes) {
+                val c = b.toInt().toChar()
+                if (!c.isWhitespace()) {
+                    return c == '{' || c == '['
+                }
+            }
+            return false
+        }
+
+        internal fun extractImagePayloadFromJson(rawJson: String): ExtractedImagePayload {
+            val root = modelsJsonParser.parseToJsonElement(rawJson).jsonObject
+            if ((root["success"] as? JsonPrimitive)?.booleanOrNull == false) {
+                return ExtractedImagePayload(isExplicitFailure = true)
+            }
+            val dataItem = root["data"]?.jsonArray?.firstOrNull()?.jsonObject
+            if (dataItem != null) {
+                val b64 = (dataItem["b64_json"] as? JsonPrimitive)?.contentOrNull
+                    ?: (dataItem["image"] as? JsonPrimitive)?.contentOrNull
+                val url = (dataItem["url"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                return ExtractedImagePayload(base64 = b64, remoteUrl = url)
+            }
+            when (val resultElem = root["result"]) {
+                is JsonObject -> {
+                    val b64 = (resultElem["image"] as? JsonPrimitive)?.contentOrNull
+                        ?: (resultElem["b64_json"] as? JsonPrimitive)?.contentOrNull
+                        ?: (resultElem["base64"] as? JsonPrimitive)?.contentOrNull
+                    val url = (resultElem["url"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                    return ExtractedImagePayload(base64 = b64, remoteUrl = url)
+                }
+                is JsonPrimitive -> {
+                    val str = resultElem.contentOrNull?.trim().orEmpty()
+                    if (str.isNotEmpty()) {
+                        return if (str.startsWith("http://", ignoreCase = true) || str.startsWith("https://", ignoreCase = true)) {
+                            ExtractedImagePayload(remoteUrl = str)
+                        } else {
+                            ExtractedImagePayload(base64 = str)
+                        }
+                    }
+                }
+                else -> Unit
+            }
+            val topB64 = (root["b64_json"] as? JsonPrimitive)?.contentOrNull
+                ?: (root["image"] as? JsonPrimitive)?.contentOrNull
+            val topUrl = (root["url"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+            return ExtractedImagePayload(base64 = topB64, remoteUrl = topUrl)
+        }
+
+        internal fun decodeBase64ImageBytes(rawBase64: String): ByteArray {
+            val cleaned = if (rawBase64.startsWith("data:", ignoreCase = true) && rawBase64.contains(";base64,")) {
+                rawBase64.substringAfter(";base64,")
+            } else {
+                rawBase64
+            }
+            return Base64.getMimeDecoder().decode(cleaned.trim())
+        }
+
+        internal fun detectImageFormat(bytes: ByteArray, contentType: String = ""): Pair<String, String> {
+            if (bytes.size >= 3 &&
+                bytes[0] == 0xFF.toByte() &&
+                bytes[1] == 0xD8.toByte() &&
+                bytes[2] == 0xFF.toByte()
+            ) {
+                return "jpg" to "image/jpeg"
+            }
+            if (bytes.size >= 4 &&
+                bytes[0] == 0x89.toByte() &&
+                bytes[1] == 0x50.toByte() &&
+                bytes[2] == 0x4E.toByte() &&
+                bytes[3] == 0x47.toByte()
+            ) {
+                return "png" to "image/png"
+            }
+            if (bytes.size >= 12 &&
+                bytes[0] == 'R'.code.toByte() &&
+                bytes[1] == 'I'.code.toByte() &&
+                bytes[2] == 'F'.code.toByte() &&
+                bytes[3] == 'F'.code.toByte() &&
+                bytes[8] == 'W'.code.toByte() &&
+                bytes[9] == 'E'.code.toByte() &&
+                bytes[10] == 'B'.code.toByte() &&
+                bytes[11] == 'P'.code.toByte()
+            ) {
+                return "webp" to "image/webp"
+            }
+            if (bytes.size >= 3 &&
+                bytes[0] == 'G'.code.toByte() &&
+                bytes[1] == 'I'.code.toByte() &&
+                bytes[2] == 'F'.code.toByte()
+            ) {
+                return "gif" to "image/gif"
+            }
+            val ct = contentType.lowercase()
+            return when {
+                ct.contains("jpeg") || ct.contains("jpg") -> "jpg" to "image/jpeg"
+                ct.contains("webp") -> "webp" to "image/webp"
+                ct.contains("gif") -> "gif" to "image/gif"
+                else -> "png" to "image/png"
+            }
+        }
     }
 
     override fun streamChat(
@@ -909,45 +1056,93 @@ class OpenAiCompatibleProvider @Inject constructor(
     ): Result<GeneratedMedia> = withContext(Dispatchers.IO) {
         runCatching {
             val base = validateBaseUrl(config.baseUrl, config.displayName, apiKey)
-            val chatBase = resolveOpenAiBaseUrl(config, base)
-            val endpointUrl = "$chatBase/images/generations"
-            val effectiveModelId = normalizeModelIdForRequest(config, chatBase, request.modelId)
-            val payload = buildJsonObject {
-                put("model", effectiveModelId)
-                put("prompt", request.prompt)
-                put("n", 1)
-                put("size", "1024x1024")
-            }.toString()
+            val effectiveModelId = normalizeModelIdForRequest(config, base, request.modelId)
+            val (endpointUrl, isCloudflareRun) = resolveImageEndpointUrl(config, base, effectiveModelId)
+
+            val requestBody = if (isCloudflareRun) {
+                if (requiresCloudflareMultipartImageRequest(effectiveModelId)) {
+                    MultipartBody.Builder()
+                        .setType(MultipartBody.FORM)
+                        .addFormDataPart("prompt", request.prompt)
+                        .build()
+                } else {
+                    buildJsonObject {
+                        put("prompt", request.prompt)
+                    }.toString().toRequestBody(jsonMediaType)
+                }
+            } else {
+                buildJsonObject {
+                    put("model", effectiveModelId)
+                    put("prompt", request.prompt)
+                    put("n", 1)
+                    put("size", "1024x1024")
+                }.toString().toRequestBody(jsonMediaType)
+            }
 
             val httpReq = buildBaseRequest(endpointUrl, config, apiKey)
-                .post(payload.toRequestBody(jsonMediaType))
+                .post(requestBody)
                 .build()
 
             okHttpClient.newCall(httpReq).execute().use { resp ->
-                val raw = resp.body?.string().orEmpty()
+                val bytes = resp.body?.bytes() ?: ByteArray(0)
+                val requestId = resp.header("x-request-id") ?: resp.header("cf-ray") ?: ""
                 if (!resp.isSuccessful) {
                     throw AiException(
                         ErrorParser.fromHttpResponse(
                             resp.code,
-                            raw,
+                            bytes.decodeToString(),
                             config.displayName,
                             request.modelId,
                             endpointUrl,
-                            resp.header("x-request-id").orEmpty(),
+                            requestId,
                             apiKey,
                         ),
                     )
                 }
-                val root = json.parseToJsonElement(raw).jsonObject
-                val item = root["data"]?.jsonArray?.firstOrNull()?.jsonObject
-                    ?: error("No image returned in response")
-                val b64 = item["b64_json"]?.jsonPrimitive?.contentOrNull
-                val remoteUrl = item["url"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                if (bytes.isEmpty()) {
+                    error("Empty image response")
+                }
 
-                val localUri = when {
-                    !b64.isNullOrBlank() -> mediaCacheManager.cacheBase64(b64, "png")
-                    remoteUrl.isNotBlank() -> mediaCacheManager.downloadAndCache(remoteUrl, "png").getOrDefault("")
-                    else -> ""
+                val contentType = resp.header("Content-Type").orEmpty()
+                var remoteUrl = ""
+                val localUri: String
+                val mimeType: String
+
+                if (isJsonResponse(bytes, contentType)) {
+                    val raw = bytes.decodeToString()
+                    val extracted = extractImagePayloadFromJson(raw)
+                    if (extracted.isExplicitFailure) {
+                        throw AiException(
+                            ErrorParser.fromHttpResponse(
+                                400,
+                                raw,
+                                config.displayName,
+                                request.modelId,
+                                endpointUrl,
+                                requestId,
+                                apiKey,
+                            ),
+                        )
+                    }
+                    remoteUrl = extracted.remoteUrl
+                    when {
+                        !extracted.base64.isNullOrBlank() -> {
+                            val decoded = decodeBase64ImageBytes(extracted.base64)
+                            if (decoded.isEmpty()) error("Decoded image is empty")
+                            val (ext, detectedMime) = detectImageFormat(decoded, contentType)
+                            mimeType = detectedMime
+                            localUri = mediaCacheManager.cacheBytes(decoded, ext)
+                        }
+                        remoteUrl.isNotBlank() -> {
+                            mimeType = "image/png"
+                            localUri = mediaCacheManager.downloadAndCache(remoteUrl, "png").getOrThrow()
+                        }
+                        else -> error("No image returned in response")
+                    }
+                } else {
+                    val (ext, detectedMime) = detectImageFormat(bytes, contentType)
+                    mimeType = detectedMime
+                    localUri = mediaCacheManager.cacheBytes(bytes, ext)
                 }
 
                 GeneratedMedia(
@@ -955,7 +1150,7 @@ class OpenAiCompatibleProvider @Inject constructor(
                     type = GeneratedMediaType.IMAGE,
                     remoteUrl = remoteUrl,
                     localUri = localUri,
-                    mimeType = "image/png",
+                    mimeType = mimeType,
                     prompt = request.prompt,
                     statusText = "Completed",
                 )

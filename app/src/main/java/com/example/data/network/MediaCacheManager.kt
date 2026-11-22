@@ -21,11 +21,21 @@ class MediaCacheManager @Inject constructor(
     private val mediaDir: File
         get() = File(context.filesDir, "generated_media").apply { mkdirs() }
 
-    suspend fun cacheBase64(base64Data: String, extension: String): String = withContext(Dispatchers.IO) {
-        val bytes = Base64.decode(base64Data, Base64.DEFAULT)
-        val file = File(mediaDir, "media_${UUID.randomUUID()}.$extension")
+    suspend fun cacheBytes(bytes: ByteArray, extension: String): String = withContext(Dispatchers.IO) {
+        val cleanExt = extension.trim().trimStart('.').ifBlank { "png" }
+        val file = File(mediaDir, "media_${UUID.randomUUID()}.$cleanExt")
         file.writeBytes(bytes)
         Uri.fromFile(file).toString()
+    }
+
+    suspend fun cacheBase64(base64Data: String, extension: String): String {
+        val cleaned = if (base64Data.startsWith("data:", ignoreCase = true) && base64Data.contains(";base64,")) {
+            base64Data.substringAfter(";base64,")
+        } else {
+            base64Data
+        }
+        val bytes = Base64.decode(cleaned.trim(), Base64.DEFAULT)
+        return cacheBytes(bytes, extension)
     }
 
     suspend fun downloadAndCache(remoteUrl: String, extension: String): Result<String> = withContext(Dispatchers.IO) {

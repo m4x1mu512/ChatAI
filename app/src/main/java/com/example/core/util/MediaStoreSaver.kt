@@ -28,8 +28,14 @@ class MediaStoreSaver @Inject constructor(
         runCatching {
             val sourceUri = Uri.parse(localUriString)
             val isVideo = mediaType == GeneratedMediaType.VIDEO
-            val mimeType = if (isVideo) "video/mp4" else "image/png"
-            val ext = if (isVideo) "mp4" else "png"
+            val lowerPath = sourceUri.path.orEmpty().lowercase()
+            val (mimeType, ext) = when {
+                isVideo -> "video/mp4" to "mp4"
+                lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg") -> "image/jpeg" to "jpg"
+                lowerPath.endsWith(".webp") -> "image/webp" to "webp"
+                lowerPath.endsWith(".gif") -> "image/gif" to "gif"
+                else -> "image/png" to "png"
+            }
             val collection = if (isVideo) {
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI
             } else {

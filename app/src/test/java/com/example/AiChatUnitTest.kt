@@ -342,4 +342,63 @@ class AiChatUnitTest {
         )
         assertEquals(listOf("gemini-2.5-flash"), parsed.map { it.modelId })
     }
+
+    @Test
+    fun `cloudflare resolves ai run image endpoint and parses flux json or binary stream`() {
+        val cfConfig = ProviderConfig(
+            id = "cf-img",
+            type = ProviderType.CLOUDFLARE,
+            displayName = "Cloudflare AI",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.cloudflare.com/client/v4/accounts/fc6bad7b047b201fcb4da85d0a00ecbe/ai/v1",
+        )
+        val (cfUrl, isCfRun) = OpenAiCompatibleProvider.resolveImageEndpointUrl(
+            config = cfConfig,
+            normalizedBase = cfConfig.baseUrl,
+            modelId = "@cf/black-forest-labs/flux-1-schnell",
+        )
+        assertTrue(isCfRun)
+        assertEquals(
+            "https://api.cloudflare.com/client/v4/accounts/fc6bad7b047b201fcb4da85d0a00ecbe/ai/run/@cf/black-forest-labs/flux-1-schnell",
+            cfUrl,
+        )
+
+        val openAiConfig = ProviderConfig(
+            id = "oa-img",
+            type = ProviderType.OPENAI,
+            displayName = "OpenAI",
+            protocol = ApiProtocol.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.openai.com/v1",
+        )
+        val (oaUrl, isOaCf) = OpenAiCompatibleProvider.resolveImageEndpointUrl(
+            config = openAiConfig,
+            normalizedBase = openAiConfig.baseUrl,
+            modelId = "dall-e-3",
+        )
+        assertFalse(isOaCf)
+        assertEquals("https://api.openai.com/v1/images/generations", oaUrl)
+
+        assertTrue(OpenAiCompatibleProvider.requiresCloudflareMultipartImageRequest("@cf/black-forest-labs/flux-2-dev"))
+        assertFalse(OpenAiCompatibleProvider.requiresCloudflareMultipartImageRequest("@cf/black-forest-labs/flux-1-schnell"))
+
+        // JPEG magic bytes inside Cloudflare JSON result.image
+        val fakeJpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0x00, 0x10)
+        val jpegB64 = java.util.Base64.getEncoder().encodeToString(fakeJpeg)
+        val cfResponseJson = """{"result":{"image":"$jpegB64"},"success":true,"errors":[],"messages":[]}"""
+        assertTrue(OpenAiCompatibleProvider.isJsonResponse(cfResponseJson.toByteArray(), "application/json"))
+        val extracted = OpenAiCompatibleProvider.extractImagePayloadFromJson(cfResponseJson)
+        assertFalse(extracted.isExplicitFailure)
+        assertEquals(jpegB64, extracted.base64)
+        val decoded = OpenAiCompatibleProvider.decodeBase64ImageBytes(extracted.base64!!)
+        assertEquals("jpg" to "image/jpeg", OpenAiCompatibleProvider.detectImageFormat(decoded))
+
+        // Raw PNG binary stream (e.g. stable-diffusion-xl-base-1.0)
+        val fakePng = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        assertFalse(OpenAiCompatibleProvider.isJsonResponse(fakePng, "image/png"))
+        assertEquals("png" to "image/png", OpenAiCompatibleProvider.detectImageFormat(fakePng, "image/png"))
+
+        // Explicit Cloudflare success=false failure payload
+        val cfFailJson = """{"success":false,"errors":[{"code":7000,"message":"No route for that URI"}],"result":null}"""
+        assertTrue(OpenAiCompatibleProvider.extractImagePayloadFromJson(cfFailJson).isExplicitFailure)
+    }
 }
