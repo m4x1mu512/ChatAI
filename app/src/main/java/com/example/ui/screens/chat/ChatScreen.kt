@@ -128,6 +128,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -291,7 +292,8 @@ fun ChatScreen(
             Column {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
                     ),
                     navigationIcon = {
                         if (showBackButton) {
@@ -332,18 +334,18 @@ fun ChatScreen(
                             MaterialTheme.colorScheme.onSurface
                         }
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = if (isUnselected) {
-                                MaterialTheme.colorScheme.primaryContainer
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
                             } else {
                                 MaterialTheme.colorScheme.surfaceContainerLow
                             },
                             border = BorderStroke(
                                 width = 1.dp,
                                 color = if (isUnselected) {
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
                                 } else {
-                                    MaterialTheme.colorScheme.outlineVariant
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
                                 },
                             ),
                             modifier = Modifier
@@ -410,7 +412,7 @@ fun ChatScreen(
         },
         bottomBar = {
             Surface(
-                color = MaterialTheme.colorScheme.surface,
+                color = MaterialTheme.colorScheme.background,
                 tonalElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -421,7 +423,7 @@ fun ChatScreen(
                         .imePadding(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
                     BoxWithConstraints(
                         modifier = Modifier
                             .widthIn(max = 820.dp)
@@ -434,7 +436,7 @@ fun ChatScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(max = availableHeight)
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             AnimatedVisibility(visible = state.isLoadingAttachment) {
@@ -661,9 +663,9 @@ fun ChatScreen(
                     val modelChipInteraction = remember { MutableInteractionSource() }
                     val needsModelPick = state.activeModelId.isNullOrBlank()
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = if (needsModelPick) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
                         } else {
                             MaterialTheme.colorScheme.surfaceContainerLow
                         },
@@ -757,7 +759,7 @@ fun ChatScreen(
                         else -> stringResource(R.string.github_chat_select_repo)
                     }
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = if (ghConnected && ghActive) {
                             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
                         } else {
@@ -886,12 +888,13 @@ fun ChatScreen(
                             )
                         },
                         maxLines = 5,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(18.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            focusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            unfocusedBorderColor = Color.Transparent,
+                            cursorColor = MaterialTheme.colorScheme.primary,
                         ),
                         modifier = Modifier
                             .weight(1f)

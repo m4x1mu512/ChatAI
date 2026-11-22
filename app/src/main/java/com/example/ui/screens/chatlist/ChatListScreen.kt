@@ -72,6 +72,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
@@ -166,12 +167,13 @@ fun ChatListScreen(
                         }
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        focusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        unfocusedBorderColor = Color.Transparent,
+                        cursorColor = MaterialTheme.colorScheme.primary,
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -402,20 +404,20 @@ private fun ChatRowCard(
     }
 
     Card(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
-                MaterialTheme.colorScheme.surfaceContainerHigh
+                MaterialTheme.colorScheme.surfaceContainerLow
             } else {
-                MaterialTheme.colorScheme.surface
+                MaterialTheme.colorScheme.background
             },
         ),
         border = BorderStroke(
             width = 1.dp,
             color = if (isSelected) {
-                MaterialTheme.colorScheme.outlineVariant
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
             } else {
-                MaterialTheme.colorScheme.surface
+                Color.Transparent
             },
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -433,7 +435,7 @@ private fun ChatRowCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
+                .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -462,12 +464,12 @@ private fun ChatRowCard(
                     if (chat.providerName.isNotBlank()) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ) {
                             Text(
                                 text = chat.providerName,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),

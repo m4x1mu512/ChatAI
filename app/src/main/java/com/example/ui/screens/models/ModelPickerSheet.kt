@@ -122,7 +122,7 @@ fun ModelPickerSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.background,
     ) {
         Column(
             modifier = Modifier
@@ -188,8 +188,9 @@ fun ModelPickerSheet(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    focusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                    cursorColor = MaterialTheme.colorScheme.primary,
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -272,7 +273,7 @@ fun ModelPickerSheet(
                                     Text(
                                         text = "${provider.displayName} (${providerModels.size})",
                                         style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.primary,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -414,18 +415,18 @@ fun ModelPickerSheet(
                                 val isSelected = provider.id == selectedProviderId && model.modelId == selectedModelId
                                 val itemInteraction = remember { MutableInteractionSource() }
                                 Surface(
-                                    shape = RoundedCornerShape(14.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     color = if (isSelected) {
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
                                     } else {
-                                        MaterialTheme.colorScheme.surfaceContainerLow
+                                        MaterialTheme.colorScheme.background
                                     },
                                     border = BorderStroke(
                                         width = 1.dp,
                                         color = if (isSelected) {
-                                            MaterialTheme.colorScheme.primary
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
                                         } else {
-                                            MaterialTheme.colorScheme.outlineVariant
+                                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
                                         },
                                     ),
                                     modifier = Modifier
