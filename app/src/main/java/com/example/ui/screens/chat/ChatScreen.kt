@@ -513,11 +513,10 @@ fun ChatScreen(
                 }
 
                 AnimatedVisibility(visible = state.stagedAttachments.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         state.stagedAttachments.forEach { att ->
                             StagedAttachmentChip(
@@ -827,13 +826,13 @@ fun ChatScreen(
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                     border = BorderStroke(
                         1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
                     ),
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.Bottom,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
@@ -843,7 +842,7 @@ fun ChatScreen(
                             modifier = Modifier.testTag("attach_button"),
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.AttachFile,
+                                imageVector = Icons.Outlined.Add,
                                 contentDescription = stringResource(R.string.chat_attach),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -948,7 +947,7 @@ fun ChatScreen(
                                 enabled = canSend,
                                 interactionSource = sendInteraction,
                                 modifier = Modifier
-                                    .size(48.dp)
+                                    .size(46.dp)
                                     .pressScale(sendInteraction, enabled = canSend)
                                     .testTag("send_message_button"),
                             ) {
@@ -1199,9 +1198,9 @@ private fun StagedAttachmentChip(
     onRemove: () -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
     ) {
         Row(
             modifier = Modifier.padding(start = 8.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
@@ -1299,32 +1298,26 @@ private fun ChatMessageBubble(
 
         Surface(
             shape = RoundedCornerShape(
-                topStart = 14.dp,
-                topEnd = 14.dp,
-                bottomStart = if (isUser) 14.dp else 4.dp,
-                bottomEnd = if (isUser) 4.dp else 14.dp,
+                topStart = 18.dp,
+                topEnd = 18.dp,
+                bottomStart = if (isUser) 18.dp else 4.dp,
+                bottomEnd = if (isUser) 5.dp else 18.dp,
             ),
-            // Chatbox keeps assistant answers on the page canvas and gives user prompts
-            // a quiet neutral bubble instead of a strongly tinted accent surface.
-            color = if (isUser) {
-                MaterialTheme.colorScheme.surfaceContainerLow
-            } else {
-                MaterialTheme.colorScheme.background
-            },
+            color = if (isUser) MaterialTheme.colorScheme.surfaceContainerLow else Color.Transparent,
             border = BorderStroke(
                 width = 1.dp,
-                color = if (isUser) {
-                    MaterialTheme.colorScheme.outlineVariant
-                } else {
-                    MaterialTheme.colorScheme.background
-                },
+                color = if (isUser) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)
+                else Color.Transparent,
             ),
             tonalElevation = 0.dp,
-            modifier = Modifier.widthIn(max = 620.dp),
+            modifier = Modifier.widthIn(max = if (isUser) 620.dp else 820.dp),
         ) {
             Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(
+                    horizontal = if (isUser) 16.dp else 4.dp,
+                    vertical = if (isUser) 13.dp else 5.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 // Attachments in bubble
                 if (message.attachments.isNotEmpty()) {
@@ -1340,8 +1333,8 @@ private fun ChatMessageBubble(
                                         contentDescription = att.displayName,
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier
-                                            .size(128.dp)
-                                            .clip(RoundedCornerShape(12.dp))
+                                            .size(144.dp)
+                                            .clip(RoundedCornerShape(14.dp))
                                             .clickable { onImageClick(att.localUri) }
                                             .testTag("message_image_thumbnail"),
                                     )

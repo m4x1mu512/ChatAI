@@ -253,7 +253,7 @@ fun ModelPickerSheet(
             } else {
                 LazyColumn(
                     contentPadding = PaddingValues(bottom = 28.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     modelsByProvider.forEach { (provider, providerModels) ->
                         item(key = "hdr_${provider.id}") {
@@ -261,7 +261,7 @@ fun ModelPickerSheet(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 8.dp, bottom = 2.dp),
+                                    .padding(top = 14.dp, bottom = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
@@ -420,7 +420,7 @@ fun ModelPickerSheet(
                                     color = if (isSelected) {
                                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
                                     } else {
-                                        MaterialTheme.colorScheme.background
+                                        MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.68f)
                                     },
                                     border = BorderStroke(
                                         width = 1.dp,
@@ -445,7 +445,7 @@ fun ModelPickerSheet(
                                         .testTag("model_item_${model.modelId}"),
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
