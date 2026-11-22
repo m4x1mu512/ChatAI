@@ -103,245 +103,203 @@ fun ChatListScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text(
-                            text = stringResource(R.string.chats_title),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = stringResource(if (state.showArchived) R.string.chats_tab_archived else R.string.chats_tab_active),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { viewModel.createNewChat(untitled, onOpenChat) },
-                        modifier = Modifier.testTag("new_chat_toolbar_button"),
-                    ) {
-                        Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.chats_new), tint = MaterialTheme.colorScheme.primary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { viewModel.createNewChat(untitled, onOpenChat) },
-                icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                text = { Text(stringResource(R.string.chats_new)) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 2.dp),
-                modifier = Modifier.testTag("new_chat_fab"),
-            )
-        },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentAlignment = Alignment.TopCenter,
-        ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 720.dp)
-                    .fillMaxSize()
-                    .padding(horizontal = 18.dp),
+        bottomBar = {
+            Surface(
+                color = MaterialTheme.colorScheme.background,
+                tonalElevation = 0.dp,
             ) {
-                OutlinedTextField(
-                    value = state.searchQuery,
-                    onValueChange = viewModel::updateSearchQuery,
-                    placeholder = {
-                        Text(
-                            text = stringResource(R.string.chats_search_hint),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Outlined.Search,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    trailingIcon = {
-                        if (state.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Close,
-                                    contentDescription = stringResource(R.string.cd_close),
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        focusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                        unfocusedBorderColor = Color.Transparent,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                    ),
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("chat_search_input"),
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    SegmentedButton(
-                        selected = !state.showArchived,
-                        onClick = { viewModel.setShowArchived(false) },
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 10.dp, bottom = 12.dp),
+                ) {
+                    Button(
+                        onClick = { viewModel.createNewChat(untitled, onOpenChat) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .testTag("new_chat_fab"),
+                        shape = RoundedCornerShape(14.dp),
                     ) {
-                        Text(
-                            text = stringResource(R.string.chats_tab_active),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Icon(Icons.Outlined.Add, contentDescription = null)
+                        Spacer(Modifier.width(10.dp))
+                        Text(stringResource(R.string.chats_new), style = MaterialTheme.typography.titleSmall)
                     }
-                    SegmentedButton(
-                        selected = state.showArchived,
-                        onClick = { viewModel.setShowArchived(true) },
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(onClick = onOpenProviders)
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        Icon(
+                            Icons.Outlined.SettingsEthernet,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(21.dp),
+                        )
+                        Spacer(Modifier.width(14.dp))
                         Text(
-                            text = stringResource(R.string.chats_tab_archived),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            stringResource(R.string.nav_providers),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+            }
+        },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 16.dp, top = 18.dp, bottom = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(7.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Outlined.ChatBubbleOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(21.dp),
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "Chatbox",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "AI",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { viewModel.setShowArchived(!state.showArchived) }) {
+                    Text(
+                        stringResource(if (state.showArchived) R.string.chats_tab_active else R.string.chats_tab_archived),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
-                if (state.chats.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .widthIn(max = 380.dp)
-                                .padding(horizontal = 16.dp, vertical = 24.dp),
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(22.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                                color = MaterialTheme.colorScheme.surface,
-                            ) {
-                                Image(
-                                    painter = painterResource(id = R.drawable.img_empty_chat),
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(156.dp)
-                                        .clip(RoundedCornerShape(22.dp)),
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(18.dp))
-                            Text(
-                                text = stringResource(
-                                    if (state.hasConnectedProvider) R.string.chats_empty_title else R.string.chats_no_provider_title,
-                                ),
-                                style = MaterialTheme.typography.titleLarge,
-                                textAlign = TextAlign.Center,
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = stringResource(
-                                    if (state.hasConnectedProvider) R.string.chats_empty_subtitle else R.string.chats_no_provider_subtitle,
-                                ),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                            )
-                            Spacer(modifier = Modifier.height(18.dp))
-                            if (!state.hasConnectedProvider) {
-                                Button(onClick = onOpenProviders) {
-                                    Icon(Icons.Outlined.SettingsEthernet, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(R.string.providers_onboarding_title))
-                                }
-                            } else {
-                                Button(onClick = { viewModel.createNewChat(untitled, onOpenChat) }) {
-                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(R.string.chats_new))
-                                }
-                            }
+            OutlinedTextField(
+                value = state.searchQuery,
+                onValueChange = viewModel::updateSearchQuery,
+                placeholder = {
+                    Text(
+                        text = stringResource(R.string.chats_search_hint),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                trailingIcon = {
+                    if (state.searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.cd_close))
                         }
                     }
-                } else {
-                    LazyColumn(
-                        contentPadding = PaddingValues(top = 4.dp, bottom = 104.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        if (pinned.isNotEmpty()) {
-                            item(key = "hdr_pinned") {
-                                Text(
-                                    text = stringResource(R.string.chats_pinned),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(vertical = 2.dp),
-                                )
-                            }
-                            items(pinned, key = { "pin_${it.id}" }) { chat ->
-                                ChatRowCard(
-                                    chat = chat,
-                                    isSelected = chat.id == selectedChatId,
-                                    onClick = { onOpenChat(chat.id) },
-                                    onRename = {
-                                        renameTarget = chat
-                                        renameText = chat.title
-                                    },
-                                    onTogglePin = { viewModel.togglePin(chat) },
-                                    onToggleArchive = { viewModel.toggleArchive(chat) },
-                                    onDelete = { deleteTarget = chat },
-                                    modifier = Modifier.animateItem(),
-                                )
-                            }
-                        }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    focusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    unfocusedBorderColor = Color.Transparent,
+                    cursorColor = MaterialTheme.colorScheme.primary,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .testTag("chat_search_input"),
+            )
 
-                        if (unpinned.isNotEmpty()) {
-                            if (pinned.isNotEmpty()) {
-                                item(key = "hdr_recent") {
-                                    Text(
-                                        text = stringResource(R.string.chats_recent),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
-                                    )
-                                }
-                            }
-                            items(unpinned, key = { "chat_${it.id}" }) { chat ->
-                                ChatRowCard(
-                                    chat = chat,
-                                    isSelected = chat.id == selectedChatId,
-                                    onClick = { onOpenChat(chat.id) },
-                                    onRename = {
-                                        renameTarget = chat
-                                        renameText = chat.title
-                                    },
-                                    onTogglePin = { viewModel.togglePin(chat) },
-                                    onToggleArchive = { viewModel.toggleArchive(chat) },
-                                    onDelete = { deleteTarget = chat },
-                                    modifier = Modifier.animateItem(),
-                                )
-                            }
-                        }
+            Spacer(Modifier.height(18.dp))
+
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                if (pinned.isNotEmpty()) {
+                    item(key = "hdr_pinned") {
+                        Text(
+                            text = stringResource(R.string.chats_pinned),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 2.dp, top = 8.dp, bottom = 8.dp),
+                        )
+                    }
+                    items(pinned, key = { "pin_${it.id}" }) { chat ->
+                        ChatRowCard(
+                            chat = chat,
+                            isSelected = chat.id == selectedChatId,
+                            onClick = { onOpenChat(chat.id) },
+                            onRename = { renameTarget = chat; renameText = chat.title },
+                            onTogglePin = { viewModel.togglePin(chat) },
+                            onToggleArchive = { viewModel.toggleArchive(chat) },
+                            onDelete = { deleteTarget = chat },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
+
+                item(key = "hdr_chats") {
+                    Text(
+                        text = stringResource(R.string.chats_title),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 2.dp, top = 14.dp, bottom = 8.dp),
+                    )
+                }
+
+                if (unpinned.isEmpty() && pinned.isEmpty()) {
+                    item(key = "empty_chats") {
+                        Text(
+                            text = stringResource(
+                                if (state.hasConnectedProvider) R.string.chats_empty_subtitle
+                                else R.string.chats_no_provider_subtitle,
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 2.dp, vertical = 10.dp),
+                        )
+                    }
+                } else {
+                    items(unpinned, key = { "chat_${it.id}" }) { chat ->
+                        ChatRowCard(
+                            chat = chat,
+                            isSelected = chat.id == selectedChatId,
+                            onClick = { onOpenChat(chat.id) },
+                            onRename = { renameTarget = chat; renameText = chat.title },
+                            onTogglePin = { viewModel.togglePin(chat) },
+                            onToggleArchive = { viewModel.toggleArchive(chat) },
+                            onDelete = { deleteTarget = chat },
+                            modifier = Modifier.animateItem(),
+                        )
                     }
                 }
             }
@@ -421,7 +379,7 @@ private fun ChatRowCard(
     }
 
     Card(
-        shape = RoundedCornerShape(15.dp),
+        shape = RoundedCornerShape(11.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
@@ -452,21 +410,21 @@ private fun ChatRowCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 10.dp, top = 12.dp, bottom = 12.dp, end = 5.dp),
+                .padding(start = 8.dp, top = 9.dp, bottom = 9.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
                 shape = RoundedCornerShape(11.dp),
                 color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                     else MaterialTheme.colorScheme.surfaceContainerHighest,
-                modifier = Modifier.size(38.dp),
+                modifier = Modifier.size(30.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Outlined.ChatBubbleOutline,
                         contentDescription = null,
                         tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(19.dp),
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -484,12 +442,12 @@ private fun ChatRowCard(
                     }
                     Text(
                         text = chat.title,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.bodyLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 FlowRow(
                     verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
